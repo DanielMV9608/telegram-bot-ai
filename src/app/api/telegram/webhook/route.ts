@@ -88,59 +88,159 @@ function extractDataFromMessage(text: string): { name?: string; phone?: string }
   return result;
 }
 
-// Función para procesar mensaje con IA
+// Función para procesar con OpenAI
+async function processWithOpenAI(
+  userMessage: string,
+  systemPrompt: string,
+  conversationHistory: Array<{ role: string; content: string }>,
+  apiKey: string,
+  model: string = 'gpt-4o-mini'
+): Promise<string> {
+  const messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }> = [
+    { role: 'system', content: systemPrompt }
+  ];
+  
+  // Agregar historial
+  const recentHistory = conversationHistory.slice(-10);
+  messages.push(...recentHistory.map(m => ({
+    role: m.role as 'user' | 'assistant',
+    content: m.content
+  })));
+  
+  messages.push({ role: 'user', content: userMessage });
+  
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`
+    },
+    body: JSON.stringify({
+      model: model,
+      messages: messages,
+      max_tokens: 500
+    })
+  });
+  
+  const data = await response.json();
+  return data.choices?.[0]?.message?.content || 'Lo siento, no pude procesar tu mensaje.';
+}
+
+// Función para procesar con Gemini
+async function processWithGemini(
+  userMessage: string,
+  systemPrompt: string,
+  conversationHistory: Array<{ role: string; content: string }>,
+  apiKey: string,
+  model: string = 'gemini-1.5-flash'
+): Promise<string> {
+  // Construir el contexto
+  let context = systemPrompt + '\n\n';
+  
+  // Agregar historial
+  const recentHistory = conversationHistory.slice(-10);
+  for (const msg of recentHistory) {
+    context += `${msg.role === 'user' ? 'Usuario' : 'Asistente'}: ${msg.content}\n`;
+  }
+  
+  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      contents: [{
+        parts: [{
+          text: `${context}\nUsuario: ${userMessage}\nAsistente:`
+        }]
+      }],
+      generationConfig: {
+        maxOutputTokens: 500,
+        temperature: 0.7
+      }
+    })
+  });
+  
+  const data = await response.json();
+  return data.candidates?.[0]?.content?.parts?.[0]?.text || 'Lo siento, no pude procesar tu mensaje.';
+}
+
+// Función para procesar con z-ai (interno)
+async function processWithZAI(
+  userMessage: string,
+  systemPrompt: string,
+  conversationHistory: Array<{ role: string; content: string }>
+): Promise<string> {
+  const zai = await ZAI.create();
+  
+  const messages: Array<{ role: 'assistant' | 'user'; content: string }> = [
+    { role: 'assistant', content: systemPrompt }
+  ];
+  
+  const recentHistory = conversationHistory.slice(-10);
+  messages.push(...recentHistory.map(m => ({
+    role: m.role as 'assistant' | 'user',
+    content: m.content
+  })));
+  
+  messages.push({ role: 'user', content: userMessage });
+  
+  const completion = await zai.chat.completions.create({
+    messages,
+    thinking: { type: 'disabled' }
+  });
+  
+  return completion.choices[0]?.message?.content || 'Lo siento, no pude procesar tu mensaje.';
+}
+
+// Función principal para procesar con IA
 async function processWithAI(
   userMessage: string, 
   systemPrompt: string, 
   feedbacks: Array<{ triggerText: string; correction: string }>,
   conversationHistory: Array<{ role: string; content: string }>,
-  knowledgeBase: Array<{ title: string; content: string; type: string }>
+  knowledgeBase: Array<{ title: string; content: string; type: string }>,
+  aiConfig: { provider: string; apiKey: string | null; model: string }
 ): Promise<string> {
   try {
-    const zai = await ZAI.create();
-    
-    // Construir prompt con feedbacks de aprendizaje
+    // Construir prompt mejorado
     let enhancedPrompt = systemPrompt;
     
     // Agregar base de conocimiento
     if (knowledgeBase.length > 0) {
-      enhancedPrompt += '\n\n## Información del negocio (usa esta información para responder):\n';
+      enhancedPrompt += '\n\n## Información del negocio:\n';
       knowledgeBase.forEach(kb => {
-        enhancedPrompt += `\n### ${kb.title} (${kb.type}):\n${kb.content}\n`;
+        enhancedPrompt += `\n**${kb.title}**:\n${kb.content}\n`;
       });
     }
     
+    // Agregar aprendizajes
     if (feedbacks.length > 0) {
-      enhancedPrompt += '\n\n## Aprendizajes previos (aplica estas correcciones):\n';
+      enhancedPrompt += '\n\n## Aprendizajes:\n';
       feedbacks.forEach(fb => {
-        enhancedPrompt += `- Cuando el usuario diga algo similar a "${fb.triggerText}", ${fb.correction}\n`;
+        enhancedPrompt += `- Si preguntan algo similar a "${fb.triggerText}", ${fb.correction}\n`;
       });
     }
     
-    // Construir mensajes para el chat
-    const messages: Array<{ role: 'assistant' | 'user'; content: string }> = [
-      { role: 'assistant', content: enhancedPrompt }
-    ];
+    console.log('[AI] Provider:', aiConfig.provider);
     
-    // Agregar historial de conversación (últimos 10 mensajes)
-    const recentHistory = conversationHistory.slice(-10);
-    messages.push(...recentHistory.map(m => ({
-      role: m.role as 'assistant' | 'user',
-      content: m.content
-    })));
-    
-    // Agregar mensaje actual
-    messages.push({ role: 'user', content: userMessage });
-    
-    const completion = await zai.chat.completions.create({
-      messages,
-      thinking: { type: 'disabled' }
-    });
-    
-    return completion.choices[0]?.message?.content || 'Lo siento, no pude procesar tu mensaje. ¿Podrías repetirlo?';
+    // Seleccionar provider
+    switch (aiConfig.provider) {
+      case 'openai':
+        if (!aiConfig.apiKey) throw new Error('OpenAI API Key no configurada');
+        return await processWithOpenAI(userMessage, enhancedPrompt, conversationHistory, aiConfig.apiKey, aiConfig.model);
+      
+      case 'gemini':
+        if (!aiConfig.apiKey) throw new Error('Gemini API Key no configurada');
+        return await processWithGemini(userMessage, enhancedPrompt, conversationHistory, aiConfig.apiKey, aiConfig.model);
+      
+      case 'zai':
+      default:
+        return await processWithZAI(userMessage, enhancedPrompt, conversationHistory);
+    }
   } catch (error) {
-    console.error('Error processing with AI:', error);
-    return 'Gracias por tu mensaje. Un momento mientras proceso tu solicitud...';
+    console.error('[AI] Error:', error);
+    throw error;
   }
 }
 
@@ -154,9 +254,8 @@ export async function POST(request: NextRequest) {
   try {
     const body: TelegramUpdate = await request.json();
     
-    console.log('[Telegram] Received update:', JSON.stringify(body));
+    console.log('[Telegram] Received:', JSON.stringify(body).substring(0, 200));
     
-    // Verificar que sea un mensaje válido
     if (!body.message || !body.message.text) {
       return NextResponse.json({ ok: true });
     }
@@ -169,7 +268,7 @@ export async function POST(request: NextRequest) {
     const username = message.from?.username;
     const userMessage = message.text;
     
-    console.log(`[Telegram] Message from ${userFirstName} (${userId}): ${userMessage}`);
+    console.log(`[Telegram] From ${userFirstName}: ${userMessage}`);
     
     const client = getClient();
     
@@ -178,12 +277,15 @@ export async function POST(request: NextRequest) {
     const config = configResult.rows[0] as Record<string, unknown> | undefined;
     
     if (!config || !config.token || !config.isActive) {
-      console.log('[Telegram] Bot not configured or inactive');
+      console.log('[Telegram] Bot not configured');
       return NextResponse.json({ ok: true });
     }
     
     const token = config.token as string;
     const systemPrompt = config.systemPrompt as string;
+    const aiProvider = (config.aiProvider as string) || 'zai';
+    const aiApiKey = config.aiApiKey as string | null;
+    const aiModel = (config.aiModel as string) || 'gpt-4o-mini';
     
     // Buscar o crear lead
     let leadId: string;
@@ -196,13 +298,11 @@ export async function POST(request: NextRequest) {
     });
     
     if (leadResult.rows.length === 0) {
-      // Crear nuevo lead
       leadId = generateId();
       await client.execute({
         sql: 'INSERT INTO Lead (id, telegramId, firstName, lastName, username, status) VALUES (?, ?, ?, ?, ?, ?)',
         args: [leadId, userId, userFirstName || null, userLastName || null, username || null, 'new']
       });
-      console.log(`[Telegram] New lead created: ${userId}`);
     } else {
       const lead = leadResult.rows[0] as Record<string, unknown>;
       leadId = lead.id as string;
@@ -216,7 +316,7 @@ export async function POST(request: NextRequest) {
       args: [generateId(), leadId, 'incoming', userMessage, 'text']
     });
     
-    // Obtener historial de conversación
+    // Obtener historial
     const historyResult = await client.execute({
       sql: 'SELECT direction, content FROM Message WHERE leadId = ? ORDER BY createdAt ASC LIMIT 20',
       args: [leadId]
@@ -227,14 +327,11 @@ export async function POST(request: NextRequest) {
       content: r.content as string
     }));
     
-    // Detectar si el usuario quiere dar feedback/corrección al bot
+    // Detectar feedback
     const isFeedback = userMessage.toLowerCase().includes('bot, no') || 
-                       userMessage.toLowerCase().includes('bot no') ||
-                       userMessage.toLowerCase().includes('no digas') ||
-                       userMessage.toLowerCase().includes('no respondas');
+                       userMessage.toLowerCase().includes('bot no');
     
     if (isFeedback && conversationHistory.length > 0) {
-      // Guardar como feedback para aprendizaje
       const lastIncoming = conversationHistory.filter(m => m.role === 'user').pop();
       const lastOutgoing = conversationHistory.filter(m => m.role === 'assistant').pop();
       
@@ -243,43 +340,27 @@ export async function POST(request: NextRequest) {
         args: [generateId(), lastIncoming?.content || '', lastOutgoing?.content || null, userMessage, 'response_style', 1]
       });
       
-      await sendTelegramMessage(
-        token,
-        chatId,
-        '✅ *¡Gracias por tu feedback!* He aprendido de esta corrección y mejoraré mis respuestas futuras.'
-      );
-      
+      await sendTelegramMessage(token, chatId, '✅ *¡Gracias por tu feedback!* He aprendido de esta corrección.');
       return NextResponse.json({ ok: true });
     }
     
-    // Extraer datos del mensaje
+    // Extraer datos
     const extractedData = extractDataFromMessage(userMessage);
     
-    // Actualizar lead si encontramos datos nuevos
     if (extractedData.phone || extractedData.name) {
       await client.execute({
         sql: 'UPDATE Lead SET phone = ?, firstName = ?, status = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?',
-        args: [
-          extractedData.phone || existingPhone,
-          extractedData.name || existingFirstName,
-          'contacted',
-          leadId
-        ]
+        args: [extractedData.phone || existingPhone, extractedData.name || existingFirstName, 'contacted', leadId]
       });
-      
-      if (!existingPhone && extractedData.phone) {
-        console.log(`[Telegram] Lead data captured: ${extractedData.name} - ${extractedData.phone}`);
-      }
     }
     
-    // Obtener feedback activo para aprendizaje
+    // Obtener feedback y conocimiento
     const feedbacksResult = await client.execute("SELECT triggerText, correction FROM Feedback WHERE isActive = 1 LIMIT 10");
     const activeFeedbacks = feedbacksResult.rows.map(r => ({
       triggerText: r.triggerText as string,
       correction: r.correction as string
     }));
     
-    // Obtener base de conocimiento
     const knowledgeResult = await client.execute("SELECT title, content, type FROM KnowledgeBase WHERE isActive = 1");
     const knowledgeBase = knowledgeResult.rows.map(r => ({
       title: r.title as string,
@@ -288,13 +369,20 @@ export async function POST(request: NextRequest) {
     }));
     
     // Procesar con IA
-    const aiResponse = await processWithAI(
-      userMessage,
-      systemPrompt,
-      activeFeedbacks,
-      conversationHistory,
-      knowledgeBase
-    );
+    let aiResponse: string;
+    try {
+      aiResponse = await processWithAI(
+        userMessage,
+        systemPrompt,
+        activeFeedbacks,
+        conversationHistory,
+        knowledgeBase,
+        { provider: aiProvider, apiKey: aiApiKey, model: aiModel }
+      );
+    } catch (aiError) {
+      console.error('[AI] Error:', aiError);
+      aiResponse = 'Disculpa, estoy teniendo problemas técnicos. Por favor intenta de nuevo en un momento.';
+    }
     
     // Guardar mensaje saliente
     await client.execute({
@@ -302,17 +390,17 @@ export async function POST(request: NextRequest) {
       args: [generateId(), leadId, 'outgoing', aiResponse, 'text']
     });
     
-    // Enviar respuesta a Telegram
+    // Enviar respuesta
     await sendTelegramMessage(token, chatId, aiResponse);
     
     return NextResponse.json({ ok: true });
   } catch (error) {
     console.error('[Telegram] Webhook error:', error);
-    return NextResponse.json({ ok: true }); // Siempre retornar ok a Telegram
+    return NextResponse.json({ ok: true });
   }
 }
 
-// GET - Verificar estado del webhook
+// GET - Verificar estado
 export async function GET() {
   return NextResponse.json({
     status: 'active',

@@ -141,6 +141,12 @@ export default function Dashboard() {
   const [systemPrompt, setSystemPrompt] = useState('');
   const [isConnecting, setIsConnecting] = useState(false);
   
+  // AI Configuration
+  const [aiProvider, setAiProvider] = useState('zai');
+  const [aiApiKey, setAiApiKey] = useState('');
+  const [aiModel, setAiModel] = useState('gpt-4o-mini');
+  const [isSavingAI, setIsSavingAI] = useState(false);
+  
   // Feedback form
   const [newFeedback, setNewFeedback] = useState({ triggerText: '', correction: '', category: 'response_style' });
   

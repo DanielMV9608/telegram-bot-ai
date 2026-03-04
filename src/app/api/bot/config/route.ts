@@ -15,8 +15,8 @@ export async function GET() {
     if (result.rows.length === 0) {
       // Crear configuración inicial
       await client.execute(`
-        INSERT INTO BotConfig (id, systemPrompt, isActive)
-        VALUES ('default', 'Eres un asistente de atención al cliente amable y profesional.', 0)
+        INSERT INTO BotConfig (id, systemPrompt, isActive, aiProvider, aiModel)
+        VALUES ('default', 'Eres un asistente de atención al cliente amable y profesional. Responde de forma concisa y útil.', 0, 'zai', 'gpt-4o-mini')
       `);
       
       const newResult = await client.execute('SELECT * FROM BotConfig LIMIT 1');
@@ -27,6 +27,7 @@ export async function GET() {
         config: {
           ...config,
           token: config.token ? String(config.token).substring(0, 10) + '...' : null,
+          aiApiKey: config.aiApiKey ? '••••••••' : null, // No mostrar API key completa
         }
       });
     }
@@ -38,6 +39,7 @@ export async function GET() {
       config: {
         ...config,
         token: config.token ? String(config.token).substring(0, 10) + '...' : null,
+        aiApiKey: config.aiApiKey ? '••••••••' : null,
       }
     });
   } catch (error) {
@@ -54,9 +56,16 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { token, systemPrompt, isActive } = body;
+    const { token, systemPrompt, isActive, aiProvider, aiApiKey, aiModel } = body;
     
-    console.log('[Config] Updating config:', { hasToken: !!token, hasSystemPrompt: !!systemPrompt, isActive });
+    console.log('[Config] Updating config:', { 
+      hasToken: !!token, 
+      hasSystemPrompt: !!systemPrompt, 
+      isActive,
+      aiProvider,
+      hasAiApiKey: !!aiApiKey,
+      aiModel
+    });
     
     const client = getClient();
     
@@ -67,8 +76,16 @@ export async function POST(request: NextRequest) {
       // Crear nueva configuración
       const isActiveValue = isActive ? 1 : 0;
       await client.execute({
-        sql: 'INSERT INTO BotConfig (id, token, systemPrompt, isActive) VALUES (?, ?, ?, ?)',
-        args: ['default', token || null, systemPrompt || 'Eres un asistente amable.', isActiveValue]
+        sql: 'INSERT INTO BotConfig (id, token, systemPrompt, isActive, aiProvider, aiApiKey, aiModel) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        args: [
+          'default', 
+          token || null, 
+          systemPrompt || 'Eres un asistente amable.', 
+          isActiveValue,
+          aiProvider || 'zai',
+          aiApiKey || null,
+          aiModel || 'gpt-4o-mini'
+        ]
       });
       
       console.log('[Config] Created new config');
@@ -89,6 +106,18 @@ export async function POST(request: NextRequest) {
         updates.push('isActive = ?');
         args.push(isActive ? 1 : 0);
       }
+      if (aiProvider !== undefined) {
+        updates.push('aiProvider = ?');
+        args.push(aiProvider);
+      }
+      if (aiApiKey !== undefined) {
+        updates.push('aiApiKey = ?');
+        args.push(aiApiKey || null);
+      }
+      if (aiModel !== undefined) {
+        updates.push('aiModel = ?');
+        args.push(aiModel);
+      }
       
       if (updates.length > 0) {
         args.push('default'); // WHERE id = 'default'
@@ -107,13 +136,14 @@ export async function POST(request: NextRequest) {
       config: {
         ...config,
         token: config.token ? String(config.token).substring(0, 10) + '...' : null,
+        aiApiKey: config.aiApiKey ? '••••••••' : null,
       }
     });
   } catch (error) {
     console.error('Error updating bot config:', error);
     return NextResponse.json({ 
       success: false, 
-      error: 'Error al guardar token',
+      error: 'Error al guardar configuración',
       details: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 });
   }

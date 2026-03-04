@@ -809,25 +809,47 @@ export async function POST(request: NextRequest) {
     }
     
     // Obtener feedback y conocimiento
-    const feedbacksResult = await client.execute("SELECT triggerText, correction FROM Feedback WHERE isActive = 1 LIMIT 10");
-    const activeFeedbacks = feedbacksResult.rows.map(r => ({
-      triggerText: r.triggerText as string,
-      correction: r.correction as string
-    }));
+    let activeFeedbacks: Array<{ triggerText: string; correction: string }> = [];
+    let knowledgeBase: Array<{ title: string; content: string; type: string }> = [];
     
-    const knowledgeResult = await client.execute("SELECT title, content, type FROM KnowledgeBase WHERE isActive = 1");
-    const knowledgeBase = knowledgeResult.rows.map(r => ({
-      title: r.title as string,
-      content: r.content as string,
-      type: r.type as string
-    }));
+    try {
+      const feedbacksResult = await client.execute("SELECT triggerText, correction FROM Feedback WHERE isActive = 1 LIMIT 10");
+      activeFeedbacks = feedbacksResult.rows.map(r => ({
+        triggerText: r.triggerText as string,
+        correction: r.correction as string
+      }));
+    } catch (e) {
+      console.log('[Webhook] Could not fetch feedbacks:', e);
+    }
+    
+    try {
+      const knowledgeResult = await client.execute("SELECT title, content, type FROM KnowledgeBase WHERE isActive = 1");
+      knowledgeBase = knowledgeResult.rows.map(r => ({
+        title: r.title as string,
+        content: r.content as string,
+        type: r.type as string
+      }));
+    } catch (e) {
+      console.log('[Webhook] Could not fetch knowledge base:', e);
+    }
+    
+    // Determinar qué provider usar
+    // Si no hay API key para el provider seleccionado, usar z-ai como fallback
+    let effectiveProvider = aiProvider;
+    let effectiveApiKey = aiApiKey;
+    
+    if (aiProvider !== 'zai' && !aiApiKey) {
+      console.log('[Webhook] No API key for', aiProvider, ', falling back to z-ai');
+      effectiveProvider = 'zai';
+      effectiveApiKey = null;
+    }
     
     // Procesar con IA
     let aiResponse: string;
     try {
       console.log('[Webhook] Processing with AI:', { 
-        provider: aiProvider, 
-        hasApiKey: !!aiApiKey, 
+        provider: effectiveProvider, 
+        hasApiKey: !!effectiveApiKey, 
         model: aiModel,
         knowledgeCount: knowledgeBase.length,
         feedbackCount: activeFeedbacks.length
@@ -839,7 +861,7 @@ export async function POST(request: NextRequest) {
         activeFeedbacks,
         conversationHistory,
         knowledgeBase,
-        { provider: aiProvider, apiKey: aiApiKey, model: aiModel }
+        { provider: effectiveProvider, apiKey: effectiveApiKey, model: aiModel }
       );
       
       console.log('[Webhook] AI response generated successfully');
@@ -847,13 +869,24 @@ export async function POST(request: NextRequest) {
       const errorMessage = aiError instanceof Error ? aiError.message : 'Unknown error';
       console.error('[Webhook] AI Error:', errorMessage, aiError);
       
-      // Proporcionar un mensaje más útil basado en el tipo de error
-      if (errorMessage.includes('API Key')) {
-        aiResponse = '⚠️ El bot necesita configuración. Por favor contacta al administrador para configurar la API Key.';
-      } else if (errorMessage.includes('Empty response')) {
-        aiResponse = 'Lo siento, no pude generar una respuesta. ¿Podrías reformular tu pregunta?';
+      // Intentar con z-ai como último recurso
+      if (effectiveProvider !== 'zai') {
+        console.log('[Webhook] Trying z-ai as fallback...');
+        try {
+          aiResponse = await processWithZAI(userMessage, systemPrompt, conversationHistory);
+        } catch (fallbackError) {
+          console.error('[Webhook] Fallback also failed:', fallbackError);
+          aiResponse = 'Disculpa, estoy teniendo problemas técnicos. Por favor intenta de nuevo en un momento.';
+        }
       } else {
-        aiResponse = 'Disculpa, estoy teniendo problemas técnicos. Por favor intenta de nuevo en un momento.';
+        // Proporcionar un mensaje más útil basado en el tipo de error
+        if (errorMessage.includes('API Key')) {
+          aiResponse = '⚠️ El bot necesita configuración. Por favor contacta al administrador para configurar la API Key.';
+        } else if (errorMessage.includes('Empty response')) {
+          aiResponse = 'Lo siento, no pude generar una respuesta. ¿Podrías reformular tu pregunta?';
+        } else {
+          aiResponse = 'Disculpa, estoy teniendo problemas técnicos. Por favor intenta de nuevo en un momento.';
+        }
       }
     }
     

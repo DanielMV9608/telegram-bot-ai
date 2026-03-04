@@ -849,8 +849,90 @@ export async function POST(request: NextRequest) {
       console.error('[Webhook] AI Error:', errorMessage, aiError);
       
       // ENVIAR ERROR DIRECTO A TELEGRAM PARA DIAGNÓSTICO
-      // No intentar fallback, mejor que el usuario vea el error real
       aiResponse = `🔴 ERROR:\n\n${errorMessage}\n\n📱 Provider: ${effectiveProvider}\n🤖 Model: ${aiModel}\n🔑 HasKey: ${!!effectiveApiKey}`;
+    }
+    
+    // Verificar si se debe crear una reserva
+    const shouldCreateReservation = 
+      aiResponse.includes('✅') && 
+      aiResponse.toLowerCase().includes('reserva confirmada') &&
+      userMessage.toLowerCase().match(/^(s[ií]|confirmo|ok|dale|perfecto|claro|adelante|proceder)/i);
+    
+    if (shouldCreateReservation) {
+      console.log('[Webhook] Attempting to create reservation...');
+      
+      // Extraer datos del contexto de conversación
+      const fullContext = [...conversationHistory, { role: 'user', content: userMessage }];
+      const contextText = fullContext.map(m => m.content).join(' ');
+      
+      // Buscar email
+      const emailMatch = contextText.match(/[\w.-]+@[\w.-]+\.\w+/);
+      const customerEmail = emailMatch ? emailMatch[0] : leadEmail;
+      
+      // Buscar fecha
+      let reservationDate: string | null = null;
+      const now = new Date();
+      const lowerContext = contextText.toLowerCase();
+      
+      if (lowerContext.includes('mañana') || lowerContext.includes('manana')) {
+        const tomorrow = new Date(now);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        reservationDate = tomorrow.toISOString().split('T')[0];
+      }
+      
+      // Buscar hora
+      let reservationTime: string | null = null;
+      const timeMatch = contextText.match(/(?:a\s+las?\s+)?(\d{1,2}):?(\d{0,2})\s*(am|pm)?/i);
+      if (timeMatch) {
+        let hour = parseInt(timeMatch[1]);
+        const minutes = timeMatch[2] ? parseInt(timeMatch[2]) : 0;
+        const period = timeMatch[3]?.toLowerCase() || '';
+        
+        if (period === 'pm' && hour < 12) hour += 12;
+        else if (period === 'am' && hour === 12) hour = 0;
+        
+        reservationTime = `${hour.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}`;
+      }
+      
+      // Buscar cantidad de personas
+      const peopleMatch = contextText.match(/(\d+)\s*(?:personas?|person|people)?/i);
+      const people = peopleMatch ? parseInt(peopleMatch[1]) : 1;
+      
+      if (reservationDate && reservationTime) {
+        try {
+          // Llamar al API de reservas
+          const reservationResponse = await fetch(new URL('/api/reservations/create', request.url).toString(), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              leadId,
+              name: existingFirstName || userFirstName || 'Cliente',
+              email: customerEmail,
+              phone: existingPhone,
+              date: reservationDate,
+              time: reservationTime,
+              people,
+            }),
+          });
+          
+          const reservationResult = await reservationResponse.json();
+          
+          if (reservationResult.success) {
+            console.log('[Webhook] Reservation created:', reservationResult.reservation?.id);
+            
+            // Agregar info de Google Calendar al mensaje
+            if (reservationResult.reservation?.googleEventLink) {
+              aiResponse += `\n\n📆 [Ver en Google Calendar](${reservationResult.reservation.googleEventLink})`;
+            }
+            
+            if (reservationResult.reservation?.emailSent) {
+              aiResponse += `\n📧 Confirmación enviada a ${customerEmail}`;
+            }
+          }
+        } catch (e) {
+          console.error('[Webhook] Failed to create reservation:', e);
+        }
+      }
     }
     
     // Guardar mensaje saliente

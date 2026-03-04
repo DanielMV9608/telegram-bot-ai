@@ -87,7 +87,7 @@ export async function POST(request: NextRequest) {
           isActiveValue,
           aiProvider || 'gemini',
           aiApiKey || null,
-          aiModel || 'gemini-3.1-flash-lite'
+          aiModel || 'gemini-2.0-flash'
         ]
       });
       

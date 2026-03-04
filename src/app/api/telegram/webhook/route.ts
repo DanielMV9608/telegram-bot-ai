@@ -419,7 +419,7 @@ async function processWithGemini(
   systemPrompt: string,
   conversationHistory: Array<{ role: string; content: string }>,
   apiKey: string,
-  model: string = 'gemini-3.1-flash-lite'
+  model: string = 'gemini-2.0-flash'
 ): Promise<string> {
   try {
     // Construir historial de conversación
@@ -475,8 +475,13 @@ async function processWithGemini(
       
       // Mensajes de error más específicos
       const errorMessage = errorData?.error?.message || '';
+      const errorStatus = errorData?.error?.status || '';
+      
       if (errorMessage.includes('location is not supported')) {
-        throw new Error('API_KEY_REGION_BLOCKED: Tu API key tiene restricciones de ubicación. Crea una nueva API key en Google AI Studio sin restricciones.');
+        throw new Error('API_KEY_REGION_BLOCKED: Tu API key tiene restricciones de ubicación. Crea una nueva API key en Google AI Studio (https://aistudio.google.com/app/apikey) SIN restricciones.');
+      }
+      if (response.status === 429 || errorMessage.includes('quota') || errorStatus === 'RESOURCE_EXHAUSTED') {
+        throw new Error('API_KEY_QUOTA_EXCEEDED: Tu API key alcanzó el límite de uso. Espera un momento o crea una nueva API key en Google AI Studio.');
       }
       if (response.status === 404) {
         throw new Error(`Modelo no encontrado. El modelo '${model}' no existe o no está disponible.`);
@@ -643,7 +648,7 @@ export async function POST(request: NextRequest) {
     const systemPrompt = config.systemPrompt as string;
     let aiProvider = (config.aiProvider as string) || 'gemini';
     const aiApiKey = config.aiApiKey as string | null;
-    let aiModel = (config.aiModel as string) || 'gemini-3.1-flash-lite';
+    let aiModel = (config.aiModel as string) || 'gemini-2.0-flash';
     
     // Corregir modelos inválidos automáticamente (modelos que ya no existen)
     const invalidModels = [
@@ -651,20 +656,21 @@ export async function POST(request: NextRequest) {
       'gemini-2.5-pro-preview-05-06',
       'gemini-2.5-flash',
       'gemini-2.5-pro',
-      'gemini-2.0-flash',
-      'gemini-2.0-flash-lite',
+      'gemini-3.1-flash-lite',
+      'gemini-3-flash',
+      'gemini-3.1-pro',
       'gemini-1.5-flash',
       'gemini-1.5-pro',
       'gemini-pro'
     ];
     
     if (invalidModels.includes(aiModel)) {
-      console.log('[Webhook] Auto-fixing invalid model:', aiModel, '-> gemini-3.1-flash-lite');
-      aiModel = 'gemini-3.1-flash-lite';
+      console.log('[Webhook] Auto-fixing invalid model:', aiModel, '-> gemini-2.0-flash');
+      aiModel = 'gemini-2.0-flash';
       // Actualizar en la BD
       try {
         await client.execute({
-          sql: "UPDATE BotConfig SET aiModel = 'gemini-3.1-flash-lite' WHERE id = ?",
+          sql: "UPDATE BotConfig SET aiModel = 'gemini-2.0-flash' WHERE id = ?",
           args: [config.id as string]
         });
         console.log('[Webhook] Model fixed in database');
@@ -947,8 +953,10 @@ export async function POST(request: NextRequest) {
         }
       } else {
         // Proporcionar un mensaje más útil basado en el tipo de error
-        if (errorMessage.includes('API_KEY_REGION_BLOCKED')) {
-          aiResponse = '⚠️ Tu API key de Gemini tiene restricciones de ubicación. Ve a Google AI Studio y crea una nueva API key sin restricciones de región.';
+        if (errorMessage.includes('API_KEY_QUOTA_EXCEEDED')) {
+          aiResponse = '⚠️ Tu API key de Gemini alcanzó el límite de uso gratuito.\n\nOpciones:\n1. Espera unos minutos\n2. Crea una nueva API key en: aistudio.google.com/app/apikey';
+        } else if (errorMessage.includes('API_KEY_REGION_BLOCKED')) {
+          aiResponse = '⚠️ Tu API key de Gemini tiene restricciones de ubicación.\n\nVe a aistudio.google.com/app/apikey y crea una nueva API key SIN restricciones.';
         } else if (errorMessage.includes('API_KEY_INVALID')) {
           aiResponse = '⚠️ Tu API key no es válida. Verifica que esté correcta en la configuración.';
         } else if (errorMessage.includes('API Key')) {

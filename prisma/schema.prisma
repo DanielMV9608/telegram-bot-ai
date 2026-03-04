@@ -1,9 +1,6 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -13,20 +10,66 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+// Configuración del Bot de Telegram
+model BotConfig {
+  id           String   @id @default(cuid())
+  token        String?  // Token del bot de Telegram
+  botUsername  String?  // Username del bot
+  systemPrompt String   @default("Eres un asistente de atención al cliente amable y profesional. Tu objetivo es ayudar a los clientes y capturar sus datos (nombre y número de teléfono) cuando muestren interés en los servicios. Sé cordial, útil y nunca presiones demasiado. Si el cliente te da su nombre y teléfono, agradécele y confírmale que te pondrás en contacto pronto.")
+  isActive     Boolean  @default(false)
+  webhookUrl   String?  // URL del webhook configurado
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 }
 
-model Post {
-  id        String   @id @default(cuid())
-  title     String
-  content   String?
-  published Boolean  @default(false)
-  authorId  String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+// Leads capturados por el bot
+model Lead {
+  id           String   @id @default(cuid())
+  telegramId   String   // ID de Telegram del usuario
+  firstName    String?  // Nombre del usuario
+  lastName     String?  // Apellido del usuario
+  username     String?  // Username de Telegram
+  phone        String?  // Número de teléfono capturado
+  email        String?  // Email si lo proporciona
+  status       String   @default("new") // new, contacted, converted, lost
+  notes        String?  // Notas adicionales
+  conversation String?  // Resumen de la conversación
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  messages     Message[]
+}
+
+// Mensajes intercambiados
+model Message {
+  id           String   @id @default(cuid())
+  leadId       String
+  lead         Lead     @relation(fields: [leadId], references: [id])
+  direction    String   // "incoming" o "outgoing"
+  content      String   // Contenido del mensaje
+  messageType  String   @default("text") // text, photo, etc.
+  createdAt    DateTime @default(now())
+}
+
+// Feedback para el modo aprendizaje
+model Feedback {
+  id           String   @id @default(cuid())
+  triggerText  String   // Texto que activó la corrección
+  badResponse  String?  // Respuesta incorrecta del bot
+  correction   String   // Corrección indicada por el admin
+  category     String   @default("response_style") // response_style, tone, information, etc.
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// Métricas y estadísticas
+model BotStats {
+  id              String   @id @default(cuid())
+  date            String   @unique // YYYY-MM-DD
+  messagesIn      Int      @default(0)
+  messagesOut     Int      @default(0)
+  leadsCaptured   Int      @default(0)
+  uniqueUsers     Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 }

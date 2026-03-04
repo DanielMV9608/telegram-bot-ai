@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: telegram-bot-ai
+    env: node
+    region: oregon
+    plan: free
+    buildCommand: npm install && npx prisma generate && npm run build
+    startCommand: npx prisma db push && npm start
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: DATABASE_URL
+        value: file:./data/bot.db
+      - key: NEXT_TELEMETRY_DISABLED
+        value: 1
+    disk:
+      name: data
+      mountPath: /opt/render/project/data
+      sizeGB: 1

@@ -1,141 +1,136 @@
-# 🚀 Welcome to Z.ai Code Scaffold
+# 🤖 Bot Autónomo Telegram
 
-A modern, production-ready web application scaffold powered by cutting-edge technologies, designed to accelerate your development with [Z.ai](https://chat.z.ai)'s AI-powered coding assistance.
+Plataforma para conectar un bot de Telegram con IA que gestiona clientes y captura leads automáticamente, sin escribir una sola línea de código.
 
-## ✨ Technology Stack
+![Dashboard](public/bot-logo.png)
 
-This scaffold provides a robust foundation built with:
+## ✨ Características
 
-### 🎯 Core Framework
-- **⚡ Next.js 16** - The React framework for production with App Router
-- **📘 TypeScript 5** - Type-safe JavaScript for better developer experience
-- **🎨 Tailwind CSS 4** - Utility-first CSS framework for rapid UI development
+- 🤖 **Bot de Telegram con IA**: Responde automáticamente a los clientes de forma inteligente
+- 📊 **Dashboard Web**: Interfaz para gestionar tu bot sin código
+- 👥 **Captura de Leads**: Detecta automáticamente nombres y teléfonos
+- 🧠 **Sistema de Aprendizaje**: El bot aprende de tus correcciones
+- 📈 **Estadísticas**: Métricas en tiempo real de tu bot
 
-### 🧩 UI Components & Styling
-- **🧩 shadcn/ui** - High-quality, accessible components built on Radix UI
-- **🎯 Lucide React** - Beautiful & consistent icon library
-- **🌈 Framer Motion** - Production-ready motion library for React
-- **🎨 Next Themes** - Perfect dark mode in 2 lines of code
+## 🚀 Despliegue en Render (Gratis)
 
-### 📋 Forms & Validation
-- **🎣 React Hook Form** - Performant forms with easy validation
-- **✅ Zod** - TypeScript-first schema validation
+### Paso 1: Crear un Bot en Telegram
 
-### 🔄 State Management & Data Fetching
-- **🐻 Zustand** - Simple, scalable state management
-- **🔄 TanStack Query** - Powerful data synchronization for React
-- **🌐 Fetch** - Promise-based HTTP request
+1. Abre Telegram y busca **@BotFather**
+2. Envía el comando `/newbot`
+3. Sigue las instrucciones para nombrar tu bot
+4. **Copia el token** que te da (formato: `123456789:ABCdefGHI...`)
 
-### 🗄️ Database & Backend
-- **🗄️ Prisma** - Next-generation TypeScript ORM
-- **🔐 NextAuth.js** - Complete open-source authentication solution
-
-### 🎨 Advanced UI Features
-- **📊 TanStack Table** - Headless UI for building tables and datagrids
-- **🖱️ DND Kit** - Modern drag and drop toolkit for React
-- **📊 Recharts** - Redefined chart library built with React and D3
-- **🖼️ Sharp** - High performance image processing
-
-### 🌍 Internationalization & Utilities
-- **🌍 Next Intl** - Internationalization library for Next.js
-- **📅 Date-fns** - Modern JavaScript date utility library
-- **🪝 ReactUse** - Collection of essential React hooks for modern development
-
-## 🎯 Why This Scaffold?
-
-- **🏎️ Fast Development** - Pre-configured tooling and best practices
-- **🎨 Beautiful UI** - Complete shadcn/ui component library with advanced interactions
-- **🔒 Type Safety** - Full TypeScript configuration with Zod validation
-- **📱 Responsive** - Mobile-first design principles with smooth animations
-- **🗄️ Database Ready** - Prisma ORM configured for rapid backend development
-- **🔐 Auth Included** - NextAuth.js for secure authentication flows
-- **📊 Data Visualization** - Charts, tables, and drag-and-drop functionality
-- **🌍 i18n Ready** - Multi-language support with Next Intl
-- **🚀 Production Ready** - Optimized build and deployment settings
-- **🤖 AI-Friendly** - Structured codebase perfect for AI assistance
-
-## 🚀 Quick Start
+### Paso 2: Subir a GitHub
 
 ```bash
-# Install dependencies
-bun install
-
-# Start development server
-bun run dev
-
-# Build for production
-bun run build
-
-# Start production server
-bun start
+# En tu terminal local
+git add .
+git commit -m "Bot de Telegram con IA listo"
+git branch -M main
+git remote add origin https://github.com/TU_USUARIO/telegram-bot-ai.git
+git push -u origin main
 ```
 
-Open [http://localhost:3000](http://localhost:3000) to see your application running.
+### Paso 3: Desplegar en Render
 
-## 🤖 Powered by Z.ai
+1. Ve a [render.com](https://render.com) y crea una cuenta gratis
+2. Haz clic en **"New"** → **"Web Service"**
+3. Conecta tu repositorio de GitHub
+4. Configura:
+   - **Name**: `telegram-bot-ai`
+   - **Environment**: `Node`
+   - **Build Command**: `npm install && npx prisma generate && npm run build`
+   - **Start Command**: `npx prisma db push && npm start`
+5. Agrega variable de entorno:
+   - `DATABASE_URL` = `file:./data/bot.db`
+6. Haz clic en **"Create Web Service"**
 
-This scaffold is optimized for use with [Z.ai](https://chat.z.ai) - your AI assistant for:
+### Paso 4: Configurar el Webhook
 
-- **💻 Code Generation** - Generate components, pages, and features instantly
-- **🎨 UI Development** - Create beautiful interfaces with AI assistance  
-- **🔧 Bug Fixing** - Identify and resolve issues with intelligent suggestions
-- **📝 Documentation** - Auto-generate comprehensive documentation
-- **🚀 Optimization** - Performance improvements and best practices
+1. Espera a que Render termine de desplegar
+2. Copia la URL de tu servicio (ej: `https://telegram-bot-ai.onrender.com`)
+3. Abre tu dashboard: `https://tu-app.onrender.com`
+4. Ve a **"Configuración"**
+5. Pega tu token de Telegram y la URL pública
+6. Haz clic en **"Conectar Bot"**
 
-Ready to build something amazing? Start chatting with Z.ai at [chat.z.ai](https://chat.z.ai) and experience the future of AI-powered development!
+¡Listo! Tu bot ya está funcionando con IA.
 
-## 📁 Project Structure
+## 🛠️ Desarrollo Local
+
+```bash
+# Clonar repositorio
+git clone https://github.com/TU_USUARIO/telegram-bot-ai.git
+cd telegram-bot-ai
+
+# Instalar dependencias
+npm install
+
+# Configurar base de datos
+npx prisma db push
+
+# Iniciar servidor
+npm run dev
+```
+
+Abre [http://localhost:3000](http://localhost:3000) en tu navegador.
+
+## 📁 Estructura del Proyecto
 
 ```
-src/
-├── app/                 # Next.js App Router pages
-├── components/          # Reusable React components
-│   └── ui/             # shadcn/ui components
-├── hooks/              # Custom React hooks
-└── lib/                # Utility functions and configurations
+├── prisma/
+│   └── schema.prisma      # Modelos de base de datos
+├── src/
+│   ├── app/
+│   │   ├── api/           # APIs REST
+│   │   │   ├── bot/       # Configuración y estado
+│   │   │   ├── leads/     # Gestión de leads
+│   │   │   ├── feedback/  # Sistema de aprendizaje
+│   │   │   └── telegram/  # Webhook de Telegram
+│   │   └── page.tsx       # Dashboard
+│   └── components/ui/     # Componentes UI
+└── public/                # Archivos estáticos
 ```
 
-## 🎨 Available Features & Components
+## 🧠 Sistema de Aprendizaje
 
-This scaffold includes a comprehensive set of modern web development tools:
+El bot puede aprender de tus correcciones:
 
-### 🧩 UI Components (shadcn/ui)
-- **Layout**: Card, Separator, Aspect Ratio, Resizable Panels
-- **Forms**: Input, Textarea, Select, Checkbox, Radio Group, Switch
-- **Feedback**: Alert, Toast (Sonner), Progress, Skeleton
-- **Navigation**: Breadcrumb, Menubar, Navigation Menu, Pagination
-- **Overlay**: Dialog, Sheet, Popover, Tooltip, Hover Card
-- **Data Display**: Badge, Avatar, Calendar
+### Desde el Dashboard
+1. Ve a la pestaña **"Aprendizaje"**
+2. Agrega cuándo y cómo debe responder
 
-### 📊 Advanced Data Features
-- **Tables**: Powerful data tables with sorting, filtering, pagination (TanStack Table)
-- **Charts**: Beautiful visualizations with Recharts
-- **Forms**: Type-safe forms with React Hook Form + Zod validation
+### Desde Telegram
+Escribe directamente al bot:
+```
+Bot, no digas eso. En lugar de eso, responde con...
+```
 
-### 🎨 Interactive Features
-- **Animations**: Smooth micro-interactions with Framer Motion
-- **Drag & Drop**: Modern drag-and-drop functionality with DND Kit
-- **Theme Switching**: Built-in dark/light mode support
+## 📊 Modelos de Datos
 
-### 🔐 Backend Integration
-- **Authentication**: Ready-to-use auth flows with NextAuth.js
-- **Database**: Type-safe database operations with Prisma
-- **API Client**: HTTP requests with Fetch + TanStack Query
-- **State Management**: Simple and scalable with Zustand
+- **BotConfig**: Configuración del bot (token, prompt, estado)
+- **Lead**: Clientes capturados (nombre, teléfono, estado)
+- **Message**: Historial de conversaciones
+- **Feedback**: Aprendizajes del bot
+- **BotStats**: Estadísticas diarias
 
-### 🌍 Production Features
-- **Internationalization**: Multi-language support with Next Intl
-- **Image Optimization**: Automatic image processing with Sharp
-- **Type Safety**: End-to-end TypeScript with Zod validation
-- **Essential Hooks**: 100+ useful React hooks with ReactUse for common patterns
+## 🔒 Seguridad
 
-## 🤝 Get Started with Z.ai
+- El token del bot se guarda en la base de datos, no en variables de entorno
+- El token nunca se muestra completo en el dashboard
+- Los webhooks solo aceptan peticiones de Telegram
 
-1. **Clone this scaffold** to jumpstart your project
-2. **Visit [chat.z.ai](https://chat.z.ai)** to access your AI coding assistant
-3. **Start building** with intelligent code generation and assistance
-4. **Deploy with confidence** using the production-ready setup
+## 💡 Tips
+
+- Personaliza el **System Prompt** para adaptar el bot a tu negocio
+- Revisa los leads regularmente y cambia su estado
+- Usa el modo aprendizaje para mejorar las respuestas
+
+## 📄 Licencia
+
+MIT - Libre para uso personal y comercial.
 
 ---
 
-Built with ❤️ for the developer community. Supercharged by [Z.ai](https://chat.z.ai) 🚀
+**Built with ❤️ by GLM AI**

@@ -93,13 +93,22 @@ async function processWithAI(
   userMessage: string, 
   systemPrompt: string, 
   feedbacks: Array<{ triggerText: string; correction: string }>,
-  conversationHistory: Array<{ role: string; content: string }>
+  conversationHistory: Array<{ role: string; content: string }>,
+  knowledgeBase: Array<{ title: string; content: string; type: string }>
 ): Promise<string> {
   try {
     const zai = await ZAI.create();
     
     // Construir prompt con feedbacks de aprendizaje
     let enhancedPrompt = systemPrompt;
+    
+    // Agregar base de conocimiento
+    if (knowledgeBase.length > 0) {
+      enhancedPrompt += '\n\n## Información del negocio (usa esta información para responder):\n';
+      knowledgeBase.forEach(kb => {
+        enhancedPrompt += `\n### ${kb.title} (${kb.type}):\n${kb.content}\n`;
+      });
+    }
     
     if (feedbacks.length > 0) {
       enhancedPrompt += '\n\n## Aprendizajes previos (aplica estas correcciones):\n';
@@ -270,12 +279,21 @@ export async function POST(request: NextRequest) {
       correction: r.correction as string
     }));
     
+    // Obtener base de conocimiento
+    const knowledgeResult = await client.execute("SELECT title, content, type FROM KnowledgeBase WHERE isActive = 1");
+    const knowledgeBase = knowledgeResult.rows.map(r => ({
+      title: r.title as string,
+      content: r.content as string,
+      type: r.type as string
+    }));
+    
     // Procesar con IA
     const aiResponse = await processWithAI(
       userMessage,
       systemPrompt,
       activeFeedbacks,
-      conversationHistory
+      conversationHistory,
+      knowledgeBase
     );
     
     // Guardar mensaje saliente

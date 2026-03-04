@@ -942,32 +942,19 @@ export async function POST(request: NextRequest) {
       const errorMessage = aiError instanceof Error ? aiError.message : 'Unknown error';
       console.error('[Webhook] AI Error:', errorMessage, aiError);
       
-      // Intentar con z-ai como último recurso
+      // IMPORTANTE: Enviar el error REAL a Telegram para diagnosticar
       if (effectiveProvider !== 'zai') {
         console.log('[Webhook] Trying z-ai as fallback...');
         try {
           aiResponse = await processWithZAI(userMessage, systemPrompt, conversationHistory);
         } catch (fallbackError) {
           console.error('[Webhook] Fallback also failed:', fallbackError);
-          aiResponse = 'Disculpa, estoy teniendo problemas técnicos. Por favor intenta de nuevo en un momento.';
+          // ENVIAR ERROR REAL PARA DIAGNÓSTICO
+          aiResponse = `🔴 ERROR DETECTADO:\n\n${errorMessage}\n\nProvider: ${effectiveProvider}\nModel: ${aiModel}\nHasKey: ${!!effectiveApiKey}`;
         }
       } else {
-        // Proporcionar un mensaje más útil basado en el tipo de error
-        if (errorMessage.includes('API_KEY_QUOTA_EXCEEDED')) {
-          aiResponse = '⚠️ Tu API key de Gemini alcanzó el límite de uso gratuito.\n\nOpciones:\n1. Espera unos minutos\n2. Crea una nueva API key en: aistudio.google.com/app/apikey';
-        } else if (errorMessage.includes('API_KEY_REGION_BLOCKED')) {
-          aiResponse = '⚠️ Tu API key de Gemini tiene restricciones de ubicación.\n\nVe a aistudio.google.com/app/apikey y crea una nueva API key SIN restricciones.';
-        } else if (errorMessage.includes('API_KEY_INVALID')) {
-          aiResponse = '⚠️ Tu API key no es válida. Verifica que esté correcta en la configuración.';
-        } else if (errorMessage.includes('API Key')) {
-          aiResponse = '⚠️ El bot necesita configuración. Por favor contacta al administrador para configurar la API Key.';
-        } else if (errorMessage.includes('Modelo no encontrado')) {
-          aiResponse = '⚠️ El modelo de IA seleccionado no está disponible. Selecciona otro modelo en la configuración.';
-        } else if (errorMessage.includes('Empty response')) {
-          aiResponse = 'Lo siento, no pude generar una respuesta. ¿Podrías reformular tu pregunta?';
-        } else {
-          aiResponse = 'Disculpa, estoy teniendo problemas técnicos. Por favor intenta de nuevo en un momento.';
-        }
+        // ENVIAR ERROR REAL PARA DIAGNÓSTICO
+        aiResponse = `🔴 ERROR DETECTADO:\n\n${errorMessage}\n\nProvider: ${effectiveProvider}\nModel: ${aiModel}\nHasKey: ${!!effectiveApiKey}`;
       }
     }
     

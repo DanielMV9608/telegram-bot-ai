@@ -79,13 +79,18 @@ export async function POST() {
         'gemini-2.5-flash-preview-05-20',
         'gemini-2.5-pro-preview-05-06',
         'gemini-2.5-flash',
-        'gemini-2.5-pro'
+        'gemini-2.5-pro',
+        'gemini-2.0-flash',
+        'gemini-2.0-flash-lite',
+        'gemini-1.5-flash',
+        'gemini-1.5-pro',
+        'gemini-pro'
       ];
       
       if (!currentModel || invalidModels.includes(currentModel)) {
-        console.log('[Migration] Fixing invalid model:', currentModel, '-> gemini-2.0-flash');
+        console.log('[Migration] Fixing invalid model:', currentModel, '-> gemini-3.1-flash-lite');
         await client.execute({
-          sql: "UPDATE BotConfig SET aiModel = 'gemini-2.0-flash' WHERE id = ?",
+          sql: "UPDATE BotConfig SET aiModel = 'gemini-3.1-flash-lite' WHERE id = ?",
           args: [config.id as string]
         });
       }

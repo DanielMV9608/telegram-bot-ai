@@ -419,7 +419,7 @@ async function processWithGemini(
   systemPrompt: string,
   conversationHistory: Array<{ role: string; content: string }>,
   apiKey: string,
-  model: string = 'gemini-2.0-flash'
+  model: string = 'gemini-3.1-flash-lite'
 ): Promise<string> {
   try {
     // Construir historial de conversación
@@ -630,24 +630,28 @@ export async function POST(request: NextRequest) {
     const systemPrompt = config.systemPrompt as string;
     let aiProvider = (config.aiProvider as string) || 'gemini';
     const aiApiKey = config.aiApiKey as string | null;
-    let aiModel = (config.aiModel as string) || 'gemini-2.0-flash';
+    let aiModel = (config.aiModel as string) || 'gemini-3.1-flash-lite';
     
-    // Corregir modelos inválidos automáticamente
+    // Corregir modelos inválidos automáticamente (modelos que ya no existen)
     const invalidModels = [
       'gemini-2.5-flash-preview-05-20',
       'gemini-2.5-pro-preview-05-06',
       'gemini-2.5-flash',
       'gemini-2.5-pro',
-      'gemini-pro' // también cambió
+      'gemini-2.0-flash',
+      'gemini-2.0-flash-lite',
+      'gemini-1.5-flash',
+      'gemini-1.5-pro',
+      'gemini-pro'
     ];
     
     if (invalidModels.includes(aiModel)) {
-      console.log('[Webhook] Auto-fixing invalid model:', aiModel, '-> gemini-2.0-flash');
-      aiModel = 'gemini-2.0-flash';
+      console.log('[Webhook] Auto-fixing invalid model:', aiModel, '-> gemini-3.1-flash-lite');
+      aiModel = 'gemini-3.1-flash-lite';
       // Actualizar en la BD
       try {
         await client.execute({
-          sql: "UPDATE BotConfig SET aiModel = 'gemini-2.0-flash' WHERE id = ?",
+          sql: "UPDATE BotConfig SET aiModel = 'gemini-3.1-flash-lite' WHERE id = ?",
           args: [config.id as string]
         });
         console.log('[Webhook] Model fixed in database');

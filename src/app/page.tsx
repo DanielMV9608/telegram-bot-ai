@@ -142,9 +142,9 @@ export default function Dashboard() {
   const [isConnecting, setIsConnecting] = useState(false);
   
   // AI Configuration
-  const [aiProvider, setAiProvider] = useState('zai');
+  const [aiProvider, setAiProvider] = useState('gemini');
   const [aiApiKey, setAiApiKey] = useState('');
-  const [aiModel, setAiModel] = useState('gpt-4o-mini');
+  const [aiModel, setAiModel] = useState('gemini-2.5-flash');
   const [isSavingAI, setIsSavingAI] = useState(false);
   
   // Feedback form
@@ -973,6 +973,24 @@ export default function Dashboard() {
                     <CardDescription>Selecciona qué API de IA usará el bot</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
+                    {/* Alerta informativa */}
+                    {aiProvider === 'zai' && (
+                      <div className="p-3 bg-amber-50 dark:bg-amber-950/30 rounded-lg border border-amber-200 dark:border-amber-800">
+                        <div className="flex items-start gap-2">
+                          <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 mt-0.5" />
+                          <div>
+                            <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                              Recomendación para producción
+                            </p>
+                            <p className="text-xs text-amber-700 dark:text-amber-300 mt-1">
+                              El modelo interno (z-ai) puede tener limitaciones en Vercel. 
+                              Te recomendamos configurar <strong>Google Gemini</strong> (gratis) u <strong>OpenAI</strong> para mejor rendimiento.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    
                     <div className="space-y-2">
                       <Label>Proveedor de IA</Label>
                       <select
@@ -980,9 +998,9 @@ export default function Dashboard() {
                         value={aiProvider}
                         onChange={(e) => setAiProvider(e.target.value)}
                       >
-                        <option value="zai">🤖 z-ai (Interno - Gratis)</option>
+                        <option value="gemini">🔵 Google Gemini (Recomendado)</option>
                         <option value="openai">🟢 OpenAI (GPT-4)</option>
-                        <option value="gemini">🔵 Google Gemini</option>
+                        <option value="zai">🤖 z-ai (Interno - Limitado)</option>
                       </select>
                     </div>
                     
@@ -1018,9 +1036,17 @@ export default function Dashboard() {
                         )}
                         {aiProvider === 'gemini' && (
                           <>
-                            <option value="gemini-1.5-flash">Gemini 1.5 Flash (Recomendado)</option>
-                            <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
-                            <option value="gemini-pro">Gemini Pro</option>
+                            <optgroup label="Gemini 2.5 (Más recientes)">
+                              <option value="gemini-2.5-flash">Gemini 2.5 Flash (Recomendado)</option>
+                              <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
+                            </optgroup>
+                            <optgroup label="Gemini 3 (Experimental)">
+                              <option value="gemini-3.5-flash-preview-06-17">Gemini 3.5 Flash Preview</option>
+                            </optgroup>
+                            <optgroup label="Gemini 1.5 (Estable)">
+                              <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+                              <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+                            </optgroup>
                           </>
                         )}
                         {aiProvider === 'zai' && (

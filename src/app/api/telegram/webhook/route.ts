@@ -132,37 +132,62 @@ async function processWithGemini(
   systemPrompt: string,
   conversationHistory: Array<{ role: string; content: string }>,
   apiKey: string,
-  model: string = 'gemini-1.5-flash'
+  model: string = 'gemini-2.5-flash'
 ): Promise<string> {
-  // Construir el contexto
-  let context = systemPrompt + '\n\n';
-  
-  // Agregar historial
-  const recentHistory = conversationHistory.slice(-10);
-  for (const msg of recentHistory) {
-    context += `${msg.role === 'user' ? 'Usuario' : 'Asistente'}: ${msg.content}\n`;
+  try {
+    // Construir el contexto
+    let context = systemPrompt + '\n\n';
+    
+    // Agregar historial
+    const recentHistory = conversationHistory.slice(-10);
+    for (const msg of recentHistory) {
+      context += `${msg.role === 'user' ? 'Usuario' : 'Asistente'}: ${msg.content}\n`;
+    }
+    
+    // Gemini 2.5 y 3 usan una API diferente (v1beta o v1)
+    const apiVersion = model.startsWith('gemini-3') ? 'v1' : 'v1beta';
+    const url = `https://generativelanguage.googleapis.com/${apiVersion}/models/${model}:generateContent?key=${apiKey}`;
+    
+    console.log('[Gemini] Using model:', model, 'API version:', apiVersion);
+    
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        contents: [{
+          parts: [{
+            text: `${context}\nUsuario: ${userMessage}\nAsistente:`
+          }]
+        }],
+        generationConfig: {
+          maxOutputTokens: 1000,
+          temperature: 0.7
+        }
+      })
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      console.error('[Gemini] API Error:', response.status, errorData);
+      throw new Error(`Gemini API error: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    
+    if (!content || content.trim().length === 0) {
+      console.error('[Gemini] Empty response:', data);
+      throw new Error('Empty response from Gemini');
+    }
+    
+    console.log('[Gemini] Response OK, length:', content.length);
+    return content;
+  } catch (error) {
+    console.error('[Gemini] Error:', error);
+    throw error;
   }
-  
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      contents: [{
-        parts: [{
-          text: `${context}\nUsuario: ${userMessage}\nAsistente:`
-        }]
-      }],
-      generationConfig: {
-        maxOutputTokens: 500,
-        temperature: 0.7
-      }
-    })
-  });
-  
-  const data = await response.json();
-  return data.candidates?.[0]?.content?.parts?.[0]?.text || 'Lo siento, no pude procesar tu mensaje.';
 }
 
 // Función para procesar con z-ai (interno)
@@ -171,26 +196,45 @@ async function processWithZAI(
   systemPrompt: string,
   conversationHistory: Array<{ role: string; content: string }>
 ): Promise<string> {
-  const zai = await ZAI.create();
-  
-  const messages: Array<{ role: 'assistant' | 'user'; content: string }> = [
-    { role: 'assistant', content: systemPrompt }
-  ];
-  
-  const recentHistory = conversationHistory.slice(-10);
-  messages.push(...recentHistory.map(m => ({
-    role: m.role as 'assistant' | 'user',
-    content: m.content
-  })));
-  
-  messages.push({ role: 'user', content: userMessage });
-  
-  const completion = await zai.chat.completions.create({
-    messages,
-    thinking: { type: 'disabled' }
-  });
-  
-  return completion.choices[0]?.message?.content || 'Lo siento, no pude procesar tu mensaje.';
+  try {
+    console.log('[ZAI] Initializing SDK...');
+    const zai = await ZAI.create();
+    console.log('[ZAI] SDK initialized successfully');
+    
+    const messages: Array<{ role: 'assistant' | 'user'; content: string }> = [
+      { role: 'assistant', content: systemPrompt }
+    ];
+    
+    const recentHistory = conversationHistory.slice(-10);
+    messages.push(...recentHistory.map(m => ({
+      role: m.role as 'assistant' | 'user',
+      content: m.content
+    })));
+    
+    messages.push({ role: 'user', content: userMessage });
+    
+    console.log('[ZAI] Sending request with', messages.length, 'messages');
+    
+    const completion = await zai.chat.completions.create({
+      messages,
+      thinking: { type: 'disabled' }
+    });
+    
+    console.log('[ZAI] Response received:', completion ? 'OK' : 'NULL');
+    
+    const content = completion?.choices?.[0]?.message?.content;
+    
+    if (!content || content.trim().length === 0) {
+      console.error('[ZAI] Empty response');
+      throw new Error('Empty response from ZAI');
+    }
+    
+    console.log('[ZAI] Content length:', content.length);
+    return content;
+  } catch (error) {
+    console.error('[ZAI] Error in processWithZAI:', error);
+    throw error;
+  }
 }
 
 // Función principal para procesar con IA
@@ -283,9 +327,9 @@ export async function POST(request: NextRequest) {
     
     const token = config.token as string;
     const systemPrompt = config.systemPrompt as string;
-    const aiProvider = (config.aiProvider as string) || 'zai';
+    const aiProvider = (config.aiProvider as string) || 'gemini';
     const aiApiKey = config.aiApiKey as string | null;
-    const aiModel = (config.aiModel as string) || 'gpt-4o-mini';
+    const aiModel = (config.aiModel as string) || 'gemini-2.5-flash';
     
     // Buscar o crear lead
     let leadId: string;
@@ -371,6 +415,14 @@ export async function POST(request: NextRequest) {
     // Procesar con IA
     let aiResponse: string;
     try {
+      console.log('[Webhook] Processing with AI:', { 
+        provider: aiProvider, 
+        hasApiKey: !!aiApiKey, 
+        model: aiModel,
+        knowledgeCount: knowledgeBase.length,
+        feedbackCount: activeFeedbacks.length
+      });
+      
       aiResponse = await processWithAI(
         userMessage,
         systemPrompt,
@@ -379,9 +431,20 @@ export async function POST(request: NextRequest) {
         knowledgeBase,
         { provider: aiProvider, apiKey: aiApiKey, model: aiModel }
       );
+      
+      console.log('[Webhook] AI response generated successfully');
     } catch (aiError) {
-      console.error('[AI] Error:', aiError);
-      aiResponse = 'Disculpa, estoy teniendo problemas técnicos. Por favor intenta de nuevo en un momento.';
+      const errorMessage = aiError instanceof Error ? aiError.message : 'Unknown error';
+      console.error('[Webhook] AI Error:', errorMessage, aiError);
+      
+      // Proporcionar un mensaje más útil basado en el tipo de error
+      if (errorMessage.includes('API Key')) {
+        aiResponse = '⚠️ El bot necesita configuración. Por favor contacta al administrador para configurar la API Key.';
+      } else if (errorMessage.includes('Empty response')) {
+        aiResponse = 'Lo siento, no pude generar una respuesta. ¿Podrías reformular tu pregunta?';
+      } else {
+        aiResponse = 'Disculpa, estoy teniendo problemas técnicos. Por favor intenta de nuevo en un momento.';
+      }
     }
     
     // Guardar mensaje saliente

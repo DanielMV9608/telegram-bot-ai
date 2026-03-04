@@ -859,6 +859,11 @@ export async function POST(request: NextRequest) {
     let effectiveProvider = aiProvider;
     let effectiveApiKey = aiApiKey;
     
+    console.log('[Webhook] DEBUG - aiProvider:', aiProvider);
+    console.log('[Webhook] DEBUG - aiApiKey exists:', !!aiApiKey);
+    console.log('[Webhook] DEBUG - aiApiKey value:', aiApiKey ? `${aiApiKey.substring(0, 10)}...` : 'NULL');
+    console.log('[Webhook] DEBUG - aiModel:', aiModel);
+    
     if (aiProvider !== 'zai' && !aiApiKey) {
       console.log('[Webhook] No API key for', aiProvider, ', falling back to z-ai');
       effectiveProvider = 'zai';

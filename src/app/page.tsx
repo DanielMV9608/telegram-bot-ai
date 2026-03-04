@@ -8,7 +8,6 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
@@ -31,7 +30,6 @@ import {
 import { useToast } from '@/hooks/use-toast';
 import {
   Bot,
-  Send,
   Users,
   Settings,
   Brain,
@@ -42,8 +40,6 @@ import {
   Plus,
   Trash2,
   Edit,
-  ExternalLink,
-  Copy,
   Zap,
   Shield,
   Target,
@@ -55,7 +51,11 @@ import {
   User,
   AlertCircle,
   Info,
-  Terminal,
+  Database,
+  Globe,
+  FileText,
+  Link,
+  Loader2,
 } from 'lucide-react';
 
 // Types
@@ -105,6 +105,17 @@ interface Feedback {
   createdAt: string;
 }
 
+interface Knowledge {
+  id: string;
+  title: string;
+  type: string;
+  content: string;
+  sourceUrl: string | null;
+  fileName: string | null;
+  isActive: boolean;
+  createdAt: string;
+}
+
 interface BotConfig {
   id: string;
   token: string | null;
@@ -119,6 +130,7 @@ export default function Dashboard() {
   const [status, setStatus] = useState<BotStatus | null>(null);
   const [leads, setLeads] = useState<Lead[]>([]);
   const [feedbacks, setFeedbacks] = useState<Feedback[]>([]);
+  const [knowledge, setKnowledge] = useState<Knowledge[]>([]);
   const [config, setConfig] = useState<BotConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -132,6 +144,10 @@ export default function Dashboard() {
   // Feedback form
   const [newFeedback, setNewFeedback] = useState({ triggerText: '', correction: '', category: 'response_style' });
   
+  // Knowledge form
+  const [newKnowledge, setNewKnowledge] = useState({ title: '', type: 'text', content: '', sourceUrl: '' });
+  const [isExtractingUrl, setIsExtractingUrl] = useState(false);
+  
   // Selected lead for details
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
 
@@ -139,17 +155,19 @@ export default function Dashboard() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [statusRes, leadsRes, feedbackRes, configRes] = await Promise.all([
+      const [statusRes, leadsRes, feedbackRes, configRes, knowledgeRes] = await Promise.all([
         fetch('/api/bot/status'),
         fetch('/api/leads'),
         fetch('/api/feedback'),
         fetch('/api/bot/config'),
+        fetch('/api/knowledge'),
       ]);
       
       const statusData = await statusRes.json();
       const leadsData = await leadsRes.json();
       const feedbackData = await feedbackRes.json();
       const configData = await configRes.json();
+      const knowledgeData = await knowledgeRes.json();
       
       if (statusData.success) setStatus(statusData.status);
       if (leadsData.success) setLeads(leadsData.leads);
@@ -158,6 +176,7 @@ export default function Dashboard() {
         setConfig(configData.config);
         setSystemPrompt(configData.config.systemPrompt || '');
       }
+      if (knowledgeData.success) setKnowledge(knowledgeData.knowledge);
     } catch (error) {
       console.error('Error fetching data:', error);
       toast({ title: 'Error', description: 'No se pudieron cargar los datos', variant: 'destructive' });
@@ -168,7 +187,6 @@ export default function Dashboard() {
 
   useEffect(() => {
     fetchData();
-    // Refresh every 30 seconds
     const interval = setInterval(fetchData, 30000);
     return () => clearInterval(interval);
   }, []);
@@ -186,7 +204,6 @@ export default function Dashboard() {
 
     setIsConnecting(true);
     try {
-      // Save token first
       const saveRes = await fetch('/api/bot/config', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -195,7 +212,6 @@ export default function Dashboard() {
       
       if (!saveRes.ok) throw new Error('Error al guardar token');
       
-      // Setup webhook
       const webhookRes = await fetch('/api/telegram/setup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -309,6 +325,82 @@ export default function Dashboard() {
     }
   };
 
+  // Extract content from URL
+  const handleExtractUrl = async () => {
+    if (!newKnowledge.sourceUrl) {
+      toast({ title: 'Error', description: 'Ingresa una URL', variant: 'destructive' });
+      return;
+    }
+    
+    setIsExtractingUrl(true);
+    try {
+      const res = await fetch('/api/knowledge/url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: newKnowledge.sourceUrl }),
+      });
+      
+      const data = await res.json();
+      
+      if (data.success) {
+        setNewKnowledge({
+          ...newKnowledge,
+          title: data.data.title || 'Contenido extraído',
+          content: data.data.content,
+          type: 'url'
+        });
+        toast({ title: '¡Listo!', description: 'Contenido extraído de la URL' });
+      } else {
+        throw new Error(data.error);
+      }
+    } catch (error) {
+      toast({ title: 'Error', description: 'No se pudo extraer el contenido', variant: 'destructive' });
+    } finally {
+      setIsExtractingUrl(false);
+    }
+  };
+
+  // Add knowledge
+  const handleAddKnowledge = async () => {
+    if (!newKnowledge.title || !newKnowledge.content) {
+      toast({ title: 'Error', description: 'Completa título y contenido', variant: 'destructive' });
+      return;
+    }
+    
+    try {
+      const res = await fetch('/api/knowledge', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newKnowledge),
+      });
+      
+      const data = await res.json();
+      
+      if (data.success) {
+        toast({ title: '¡Agregado!', description: 'Información añadida a la base de conocimiento' });
+        setNewKnowledge({ title: '', type: 'text', content: '', sourceUrl: '' });
+        fetchData();
+      }
+    } catch (error) {
+      toast({ title: 'Error', description: 'No se pudo agregar', variant: 'destructive' });
+    }
+  };
+
+  // Delete knowledge
+  const handleDeleteKnowledge = async (id: string) => {
+    try {
+      const res = await fetch(`/api/knowledge?id=${id}`, { method: 'DELETE' });
+      const data = await res.json();
+      
+      if (data.success) {
+        toast({ title: 'Eliminado', description: 'Información eliminada' });
+        fetchData();
+      }
+    } catch (error) {
+      toast({ title: 'Error', description: 'No se pudo eliminar', variant: 'destructive' });
+    }
+  };
+
   // Update lead status
   const handleUpdateLeadStatus = async (id: string, newStatus: string) => {
     try {
@@ -356,10 +448,15 @@ export default function Dashboard() {
     return <Badge variant={style.variant}>{style.label}</Badge>;
   };
 
-  // Copy to clipboard
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-    toast({ title: 'Copiado', description: 'Texto copiado al portapapeles' });
+  // Get knowledge type badge
+  const getKnowledgeTypeBadge = (type: string) => {
+    const styles: Record<string, { variant: 'default' | 'secondary' | 'outline'; label: string; icon: React.ReactNode }> = {
+      text: { variant: 'default', label: 'Texto', icon: <FileText className="w-3 h-3" /> },
+      url: { variant: 'secondary', label: 'URL', icon: <Globe className="w-3 h-3" /> },
+      pdf: { variant: 'outline', label: 'PDF', icon: <FileText className="w-3 h-3" /> },
+    };
+    const style = styles[type] || styles.text;
+    return <Badge variant={style.variant} className="flex items-center gap-1">{style.icon}{style.label}</Badge>;
   };
 
   return (
@@ -404,7 +501,7 @@ export default function Dashboard() {
           </div>
         ) : (
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-            <TabsList className="grid w-full grid-cols-4 lg:w-auto lg:grid-cols-4">
+            <TabsList className="grid w-full grid-cols-5 lg:w-auto lg:grid-cols-5">
               <TabsTrigger value="dashboard" className="flex items-center gap-2">
                 <Target className="w-4 h-4" />
                 <span className="hidden sm:inline">Dashboard</span>
@@ -413,13 +510,17 @@ export default function Dashboard() {
                 <Users className="w-4 h-4" />
                 <span className="hidden sm:inline">Leads</span>
               </TabsTrigger>
+              <TabsTrigger value="knowledge" className="flex items-center gap-2">
+                <Database className="w-4 h-4" />
+                <span className="hidden sm:inline">Conocimiento</span>
+              </TabsTrigger>
               <TabsTrigger value="config" className="flex items-center gap-2">
                 <Settings className="w-4 h-4" />
-                <span className="hidden sm:inline">Configuración</span>
+                <span className="hidden sm:inline">Config</span>
               </TabsTrigger>
               <TabsTrigger value="learning" className="flex items-center gap-2">
                 <Brain className="w-4 h-4" />
-                <span className="hidden sm:inline">Aprendizaje</span>
+                <span className="hidden sm:inline">IA</span>
               </TabsTrigger>
             </TabsList>
 
@@ -453,9 +554,7 @@ export default function Dashboard() {
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold">{status?.totalLeads || 0}</div>
-                    <p className="text-xs text-slate-500 mt-1">
-                      +{status?.todayLeads || 0} hoy
-                    </p>
+                    <p className="text-xs text-slate-500 mt-1">+{status?.todayLeads || 0} hoy</p>
                   </CardContent>
                 </Card>
 
@@ -466,22 +565,18 @@ export default function Dashboard() {
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold">{status?.todayMessages || 0}</div>
-                    <p className="text-xs text-slate-500 mt-1">
-                      {status?.todayStats.messagesIn || 0} recibidos
-                    </p>
+                    <p className="text-xs text-slate-500 mt-1">{status?.todayStats.messagesIn || 0} recibidos</p>
                   </CardContent>
                 </Card>
 
                 <Card className="border-0 shadow-md">
                   <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm font-medium text-slate-500">Aprendizajes</CardTitle>
-                    <Brain className="w-5 h-5 text-amber-500" />
+                    <CardTitle className="text-sm font-medium text-slate-500">Conocimiento</CardTitle>
+                    <Database className="w-5 h-5 text-amber-500" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">{status?.activeFeedback || 0}</div>
-                    <p className="text-xs text-slate-500 mt-1">
-                      Reglas activas
-                    </p>
+                    <div className="text-2xl font-bold">{knowledge.length}</div>
+                    <p className="text-xs text-slate-500 mt-1">Fuentes activas</p>
                   </CardContent>
                 </Card>
               </div>
@@ -492,13 +587,8 @@ export default function Dashboard() {
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                       <Zap className="w-5 h-5 text-amber-500" />
-                      Acción Rápida
+                      Estado del Sistema
                     </CardTitle>
-                    <CardDescription>
-                      {status?.isConnected 
-                        ? 'Tu bot está funcionando y capturando leads automáticamente'
-                        : 'Conecta tu bot para empezar a capturar leads automáticamente'}
-                    </CardDescription>
                   </CardHeader>
                   <CardContent>
                     {status?.isConnected ? (
@@ -512,11 +602,7 @@ export default function Dashboard() {
                             Los mensajes que recibas en Telegram serán procesados por IA automáticamente.
                           </p>
                         </div>
-                        <Button 
-                          variant="destructive" 
-                          onClick={handleDisconnectBot}
-                          disabled={isConnecting}
-                        >
+                        <Button variant="destructive" onClick={handleDisconnectBot} disabled={isConnecting} className="w-full">
                           {isConnecting ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <XCircle className="w-4 h-4 mr-2" />}
                           Desconectar Bot
                         </Button>
@@ -536,16 +622,12 @@ export default function Dashboard() {
                       <TrendingUp className="w-5 h-5 text-blue-500" />
                       Actividad Reciente
                     </CardTitle>
-                    <CardDescription>
-                      Últimos leads capturados
-                    </CardDescription>
                   </CardHeader>
                   <CardContent>
                     {leads.length === 0 ? (
                       <div className="text-center py-8 text-slate-500">
                         <Users className="w-12 h-12 mx-auto mb-2 opacity-50" />
                         <p>No hay leads todavía</p>
-                        <p className="text-sm">Conecta tu bot para empezar a capturar</p>
                       </div>
                     ) : (
                       <ScrollArea className="h-48">
@@ -570,41 +652,6 @@ export default function Dashboard() {
                   </CardContent>
                 </Card>
               </div>
-
-              {/* Instructions */}
-              <Card className="border-0 shadow-md">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Info className="w-5 h-5 text-blue-500" />
-                    Cómo Funciona
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="flex items-start gap-3 p-4 rounded-lg bg-slate-50 dark:bg-slate-800/50">
-                      <div className="w-8 h-8 rounded-full bg-blue-500 text-white flex items-center justify-center text-sm font-bold shrink-0">1</div>
-                      <div>
-                        <h4 className="font-medium">Crea un Bot</h4>
-                        <p className="text-sm text-slate-500">Ve a @BotFather en Telegram y crea un nuevo bot para obtener tu token.</p>
-                      </div>
-                    </div>
-                    <div className="flex items-start gap-3 p-4 rounded-lg bg-slate-50 dark:bg-slate-800/50">
-                      <div className="w-8 h-8 rounded-full bg-emerald-500 text-white flex items-center justify-center text-sm font-bold shrink-0">2</div>
-                      <div>
-                        <h4 className="font-medium">Conecta el Token</h4>
-                        <p className="text-sm text-slate-500">Pega el token y la URL pública en la configuración para activar el webhook.</p>
-                      </div>
-                    </div>
-                    <div className="flex items-start gap-3 p-4 rounded-lg bg-slate-50 dark:bg-slate-800/50">
-                      <div className="w-8 h-8 rounded-full bg-purple-500 text-white flex items-center justify-center text-sm font-bold shrink-0">3</div>
-                      <div>
-                        <h4 className="font-medium">Captura Leads</h4>
-                        <p className="text-sm text-slate-500">El bot usa IA para conversar y capturar datos de clientes automáticamente.</p>
-                      </div>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
             </TabsContent>
 
             {/* Leads Tab */}
@@ -617,9 +664,7 @@ export default function Dashboard() {
                         <Users className="w-5 h-5 text-blue-500" />
                         Leads Capturados
                       </CardTitle>
-                      <CardDescription>
-                        {leads.length} leads en total
-                      </CardDescription>
+                      <CardDescription>{leads.length} leads en total</CardDescription>
                     </div>
                     <Button variant="outline" onClick={fetchData}>
                       <RefreshCw className="w-4 h-4 mr-2" />
@@ -655,10 +700,7 @@ export default function Dashboard() {
                                   <div className="w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-500 flex items-center justify-center text-white text-sm font-medium">
                                     {lead.firstName?.[0] || lead.username?.[0] || '?'}
                                   </div>
-                                  <div>
-                                    <p className="font-medium">{lead.firstName || '-'}</p>
-                                    {lead.lastName && <p className="text-xs text-slate-500">{lead.lastName}</p>}
-                                  </div>
+                                  <p className="font-medium">{lead.firstName || '-'}</p>
                                 </div>
                               </TableCell>
                               <TableCell>
@@ -667,18 +709,12 @@ export default function Dashboard() {
                                     <Phone className="w-3 h-3" />
                                     <span>{lead.phone}</span>
                                   </div>
-                                ) : (
-                                  <span className="text-slate-400">-</span>
-                                )}
+                                ) : <span className="text-slate-400">-</span>}
                               </TableCell>
-                              <TableCell>
-                                {lead.username ? `@${lead.username}` : '-'}
-                              </TableCell>
+                              <TableCell>{lead.username ? `@${lead.username}` : '-'}</TableCell>
                               <TableCell>{getStatusBadge(lead.status)}</TableCell>
                               <TableCell>
-                                <div className="text-sm">
-                                  {new Date(lead.createdAt).toLocaleDateString()}
-                                </div>
+                                <div className="text-sm">{new Date(lead.createdAt).toLocaleDateString()}</div>
                               </TableCell>
                               <TableCell className="text-right">
                                 <div className="flex items-center justify-end gap-2">
@@ -691,68 +727,24 @@ export default function Dashboard() {
                                     <DialogContent className="max-w-2xl">
                                       <DialogHeader>
                                         <DialogTitle>Conversación con {lead.firstName || lead.username}</DialogTitle>
-                                        <DialogDescription>
-                                          Historial de mensajes
-                                        </DialogDescription>
                                       </DialogHeader>
                                       <ScrollArea className="h-96 rounded-lg border p-4 bg-slate-50 dark:bg-slate-900">
                                         {lead.messages && lead.messages.length > 0 ? (
                                           <div className="space-y-3">
                                             {lead.messages.map((msg) => (
                                               <div key={msg.id} className={`flex ${msg.direction === 'incoming' ? 'justify-start' : 'justify-end'}`}>
-                                                <div className={`max-w-[80%] p-3 rounded-lg ${
-                                                  msg.direction === 'incoming' 
-                                                    ? 'bg-white dark:bg-slate-800 border' 
-                                                    : 'bg-emerald-500 text-white'
-                                                }`}>
+                                                <div className={`max-w-[80%] p-3 rounded-lg ${msg.direction === 'incoming' ? 'bg-white dark:bg-slate-800 border' : 'bg-emerald-500 text-white'}`}>
                                                   <p className="text-sm">{msg.content}</p>
-                                                  <p className="text-xs opacity-70 mt-1">
-                                                    {new Date(msg.createdAt).toLocaleTimeString()}
-                                                  </p>
+                                                  <p className="text-xs opacity-70 mt-1">{new Date(msg.createdAt).toLocaleTimeString()}</p>
                                                 </div>
                                               </div>
                                             ))}
                                           </div>
-                                        ) : (
-                                          <p className="text-center text-slate-500">Sin mensajes</p>
-                                        )}
+                                        ) : <p className="text-center text-slate-500">Sin mensajes</p>}
                                       </ScrollArea>
                                     </DialogContent>
                                   </Dialog>
-                                  
-                                  <Dialog>
-                                    <DialogTrigger asChild>
-                                      <Button variant="ghost" size="sm">
-                                        <Edit className="w-4 h-4" />
-                                      </Button>
-                                    </DialogTrigger>
-                                    <DialogContent>
-                                      <DialogHeader>
-                                        <DialogTitle>Editar Lead</DialogTitle>
-                                      </DialogHeader>
-                                      <div className="space-y-4 py-4">
-                                        <div className="space-y-2">
-                                          <Label>Estado</Label>
-                                          <select 
-                                            className="w-full p-2 border rounded-lg"
-                                            defaultValue={lead.status}
-                                            onChange={(e) => handleUpdateLeadStatus(lead.id, e.target.value)}
-                                          >
-                                            <option value="new">Nuevo</option>
-                                            <option value="contacted">Contactado</option>
-                                            <option value="converted">Convertido</option>
-                                            <option value="lost">Perdido</option>
-                                          </select>
-                                        </div>
-                                      </div>
-                                    </DialogContent>
-                                  </Dialog>
-                                  
-                                  <Button 
-                                    variant="ghost" 
-                                    size="sm" 
-                                    onClick={() => handleDeleteLead(lead.id)}
-                                  >
+                                  <Button variant="ghost" size="sm" onClick={() => handleDeleteLead(lead.id)}>
                                     <Trash2 className="w-4 h-4 text-red-500" />
                                   </Button>
                                 </div>
@@ -767,246 +759,118 @@ export default function Dashboard() {
               </Card>
             </TabsContent>
 
-            {/* Config Tab */}
-            <TabsContent value="config" className="space-y-6">
+            {/* Knowledge Tab */}
+            <TabsContent value="knowledge" className="space-y-6">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Bot Connection */}
-                <Card className="border-0 shadow-md">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Shield className="w-5 h-5 text-emerald-500" />
-                      Conexión del Bot
-                    </CardTitle>
-                    <CardDescription>
-                      Configura tu bot de Telegram
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="token">Token del Bot</Label>
-                      <Input
-                        id="token"
-                        type="password"
-                        placeholder="123456789:ABCdefGHIjklMNOpqrSTUvwxYZ"
-                        value={tokenInput}
-                        onChange={(e) => setTokenInput(e.target.value)}
-                      />
-                      <p className="text-xs text-slate-500">
-                        Obtén tu token de <span className="font-medium">@BotFather</span> en Telegram
-                      </p>
-                    </div>
-                    
-                    <div className="space-y-2">
-                      <Label htmlFor="webhook">URL Pública del Servidor</Label>
-                      <Input
-                        id="webhook"
-                        placeholder="https://tu-servidor.com"
-                        value={webhookUrl}
-                        onChange={(e) => setWebhookUrl(e.target.value)}
-                      />
-                      <p className="text-xs text-slate-500">
-                        URL donde está alojado este dashboard (sin /api al final)
-                      </p>
-                    </div>
-                    
-                    <Separator />
-                    
-                    {status?.isConnected ? (
-                      <div className="space-y-3">
-                        <div className="p-3 bg-emerald-50 dark:bg-emerald-950/30 rounded-lg border border-emerald-200 dark:border-emerald-800">
-                          <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-400">
-                            <CheckCircle2 className="w-4 h-4" />
-                            <span className="text-sm font-medium">Bot conectado: @{status.botUsername}</span>
-                          </div>
-                        </div>
-                        <Button 
-                          variant="destructive" 
-                          className="w-full"
-                          onClick={handleDisconnectBot}
-                          disabled={isConnecting}
-                        >
-                          {isConnecting ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <XCircle className="w-4 h-4 mr-2" />}
-                          Desconectar Bot
-                        </Button>
-                      </div>
-                    ) : (
-                      <Button 
-                        className="w-full" 
-                        onClick={handleConnectBot}
-                        disabled={isConnecting}
-                      >
-                        {isConnecting ? (
-                          <>
-                            <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                            Conectando...
-                          </>
-                        ) : (
-                          <>
-                            <Zap className="w-4 h-4 mr-2" />
-                            Conectar Bot
-                          </>
-                        )}
-                      </Button>
-                    )}
-                  </CardContent>
-                </Card>
-
-                {/* System Prompt */}
-                <Card className="border-0 shadow-md">
-                  <CardHeader>
-                    <CardTitle className="flex items-center gap-2">
-                      <Sparkles className="w-5 h-5 text-purple-500" />
-                      Personalidad del Bot
-                    </CardTitle>
-                    <CardDescription>
-                      Define cómo responde el bot a los clientes
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="prompt">System Prompt</Label>
-                      <Textarea
-                        id="prompt"
-                        placeholder="Eres un asistente amable y profesional..."
-                        className="min-h-48"
-                        value={systemPrompt}
-                        onChange={(e) => setSystemPrompt(e.target.value)}
-                      />
-                    </div>
-                    <Button onClick={handleUpdatePrompt} className="w-full">
-                      <Save className="w-4 h-4 mr-2" />
-                      Guardar Prompt
-                    </Button>
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* Instructions */}
-              <Card className="border-0 shadow-md border-amber-200 dark:border-amber-800">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
-                    <AlertCircle className="w-5 h-5" />
-                    Guía de Configuración
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-4">
-                    <div className="p-4 bg-amber-50 dark:bg-amber-950/30 rounded-lg">
-                      <h4 className="font-medium mb-2">¿Cómo obtener el Token de Telegram?</h4>
-                      <ol className="list-decimal list-inside space-y-2 text-sm text-slate-600 dark:text-slate-400">
-                        <li>Abre Telegram y busca <span className="font-mono bg-slate-200 dark:bg-slate-700 px-1 rounded">@BotFather</span></li>
-                        <li>Envía el comando <span className="font-mono bg-slate-200 dark:bg-slate-700 px-1 rounded">/newbot</span></li>
-                        <li>Sigue las instrucciones para nombrar tu bot</li>
-                        <li>Copia el token que te proporciona (formato: 123456789:ABC...)</li>
-                      </ol>
-                    </div>
-                    
-                    <div className="p-4 bg-blue-50 dark:bg-blue-950/30 rounded-lg">
-                      <h4 className="font-medium mb-2">¿Qué URL de Webhook usar?</h4>
-                      <p className="text-sm text-slate-600 dark:text-slate-400">
-                        La URL debe ser la dirección pública donde está alojado este servidor. 
-                        Telegram necesita poder acceder a esta URL para enviar los mensajes.
-                        <br /><br />
-                        <strong>Ejemplo:</strong> <span className="font-mono bg-slate-200 dark:bg-slate-700 px-1 rounded">https://tu-dominio.com</span>
-                      </p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </TabsContent>
-
-            {/* Learning Tab */}
-            <TabsContent value="learning" className="space-y-6">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                {/* Add Feedback */}
+                {/* Add Knowledge */}
                 <Card className="border-0 shadow-md">
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
                       <Plus className="w-5 h-5 text-emerald-500" />
-                      Agregar Aprendizaje
+                      Agregar Conocimiento
                     </CardTitle>
                     <CardDescription>
-                      Enseña al bot cómo responder mejor
+                      Agrega información para que el bot responda mejor
                     </CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-4">
+                    {/* URL Extractor */}
+                    <div className="p-4 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-200 dark:border-blue-800">
+                      <Label className="flex items-center gap-2 text-blue-700 dark:text-blue-400">
+                        <Globe className="w-4 h-4" />
+                        Extraer de URL
+                      </Label>
+                      <div className="flex gap-2 mt-2">
+                        <Input
+                          placeholder="https://tu-negocio.com"
+                          value={newKnowledge.sourceUrl}
+                          onChange={(e) => setNewKnowledge({ ...newKnowledge, sourceUrl: e.target.value })}
+                        />
+                        <Button onClick={handleExtractUrl} disabled={isExtractingUrl}>
+                          {isExtractingUrl ? <Loader2 className="w-4 h-4 animate-spin" /> : <Link className="w-4 h-4" />}
+                        </Button>
+                      </div>
+                      <p className="text-xs text-slate-500 mt-2">Extrae automáticamente el contenido de una página web</p>
+                    </div>
+
+                    <Separator />
+
+                    {/* Manual Input */}
                     <div className="space-y-2">
-                      <Label htmlFor="trigger">Cuando el cliente diga algo como...</Label>
-                      <Textarea
-                        id="trigger"
-                        placeholder="Ej: ¿Cuánto cuesta el servicio?"
-                        value={newFeedback.triggerText}
-                        onChange={(e) => setNewFeedback({ ...newFeedback, triggerText: e.target.value })}
+                      <Label>Título</Label>
+                      <Input
+                        placeholder="Ej: Precios de servicios"
+                        value={newKnowledge.title}
+                        onChange={(e) => setNewKnowledge({ ...newKnowledge, title: e.target.value })}
                       />
                     </div>
-                    
+
                     <div className="space-y-2">
-                      <Label htmlFor="correction">El bot debe responder...</Label>
+                      <Label>Contenido / Información</Label>
                       <Textarea
-                        id="correction"
-                        placeholder="Ej: responde con los precios: Plan Básico $50/mes, Plan Pro $100/mes"
-                        value={newFeedback.correction}
-                        onChange={(e) => setNewFeedback({ ...newFeedback, correction: e.target.value })}
+                        placeholder="Escribe aquí la información que quieres que el bot sepa..."
+                        className="min-h-32"
+                        value={newKnowledge.content}
+                        onChange={(e) => setNewKnowledge({ ...newKnowledge, content: e.target.value })}
                       />
                     </div>
-                    
+
                     <div className="space-y-2">
-                      <Label htmlFor="category">Categoría</Label>
-                      <select 
-                        id="category"
+                      <Label>Tipo</Label>
+                      <select
                         className="w-full p-2 border rounded-lg"
-                        value={newFeedback.category}
-                        onChange={(e) => setNewFeedback({ ...newFeedback, category: e.target.value })}
+                        value={newKnowledge.type}
+                        onChange={(e) => setNewKnowledge({ ...newKnowledge, type: e.target.value })}
                       >
-                        <option value="response_style">Estilo de respuesta</option>
-                        <option value="information">Información específica</option>
-                        <option value="tone">Tono</option>
-                        <option value="sales">Ventas</option>
+                        <option value="text">Texto manual</option>
+                        <option value="url">Contenido web</option>
+                        <option value="pdf">PDF (próximamente)</option>
                       </select>
                     </div>
-                    
-                    <Button onClick={handleAddFeedback} className="w-full">
-                      <Brain className="w-4 h-4 mr-2" />
-                      Guardar Aprendizaje
+
+                    <Button onClick={handleAddKnowledge} className="w-full">
+                      <Database className="w-4 h-4 mr-2" />
+                      Guardar en Base de Conocimiento
                     </Button>
                   </CardContent>
                 </Card>
 
-                {/* Active Learnings */}
+                {/* Knowledge List */}
                 <Card className="border-0 shadow-md">
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
-                      <Brain className="w-5 h-5 text-purple-500" />
-                      Aprendizajes Activos
+                      <Database className="w-5 h-5 text-purple-500" />
+                      Base de Conocimiento
                     </CardTitle>
-                    <CardDescription>
-                      {feedbacks.length} reglas de aprendizaje
-                    </CardDescription>
+                    <CardDescription>{knowledge.length} fuentes de información</CardDescription>
                   </CardHeader>
                   <CardContent>
-                    {feedbacks.length === 0 ? (
+                    {knowledge.length === 0 ? (
                       <div className="text-center py-8">
-                        <Brain className="w-12 h-12 mx-auto text-slate-300 dark:text-slate-600 mb-2" />
-                        <p className="text-slate-500">No hay aprendizajes configurados</p>
+                        <Database className="w-12 h-12 mx-auto text-slate-300 dark:text-slate-600 mb-2" />
+                        <p className="text-slate-500">No hay información guardada</p>
+                        <p className="text-sm text-slate-400">Agrega contenido para que el bot responda mejor</p>
                       </div>
                     ) : (
                       <ScrollArea className="h-80">
                         <div className="space-y-3">
-                          {feedbacks.map((fb) => (
-                            <div key={fb.id} className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50 border">
+                          {knowledge.map((item) => (
+                            <div key={item.id} className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50 border">
                               <div className="flex items-start justify-between gap-2">
                                 <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-medium truncate">"{fb.triggerText}"</p>
-                                  <p className="text-xs text-slate-500 mt-1">{fb.correction}</p>
-                                  <Badge variant="outline" className="mt-2 text-xs">
-                                    {fb.category}
-                                  </Badge>
+                                  <div className="flex items-center gap-2 mb-1">
+                                    {getKnowledgeTypeBadge(item.type)}
+                                    <span className="font-medium text-sm truncate">{item.title}</span>
+                                  </div>
+                                  <p className="text-xs text-slate-500 line-clamp-2">{item.content}</p>
+                                  {item.sourceUrl && (
+                                    <a href={item.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-500 hover:underline flex items-center gap-1 mt-1">
+                                      <Globe className="w-3 h-3" />
+                                      {item.sourceUrl.substring(0, 40)}...
+                                    </a>
+                                  )}
                                 </div>
-                                <Button 
-                                  variant="ghost" 
-                                  size="sm"
-                                  onClick={() => handleDeleteFeedback(fb.id)}
-                                >
+                                <Button variant="ghost" size="sm" onClick={() => handleDeleteKnowledge(item.id)}>
                                   <Trash2 className="w-4 h-4 text-red-500" />
                                 </Button>
                               </div>
@@ -1019,29 +883,173 @@ export default function Dashboard() {
                 </Card>
               </div>
 
-              {/* Learning from Telegram */}
+              {/* Info Card */}
               <Card className="border-0 shadow-md border-purple-200 dark:border-purple-800">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-purple-600 dark:text-purple-400">
-                    <Terminal className="w-5 h-5" />
-                    Modo Aprendizaje desde Telegram
+                    <Info className="w-5 h-5" />
+                    ¿Cómo funciona?
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="p-4 bg-purple-50 dark:bg-purple-950/30 rounded-lg">
-                    <p className="text-sm text-slate-600 dark:text-slate-400 mb-3">
-                      También puedes enseñar al bot directamente desde Telegram. Cuando el bot dé una respuesta incorrecta:
-                    </p>
-                    <div className="bg-white dark:bg-slate-900 p-3 rounded-lg font-mono text-sm">
-                      <p className="text-slate-500"># Ejemplo:</p>
-                      <p>Bot, no digas eso. En lugar de eso, responde con...</p>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="p-4 rounded-lg bg-slate-50 dark:bg-slate-800/50">
+                      <Globe className="w-8 h-8 text-blue-500 mb-2" />
+                      <h4 className="font-medium">1. Extrae URLs</h4>
+                      <p className="text-sm text-slate-500">Pega la URL de tu negocio y extraemos la información automáticamente</p>
                     </div>
-                    <p className="text-xs text-slate-500 mt-3">
-                      El bot detectará automáticamente que es una corrección y la guardará como aprendizaje.
-                    </p>
+                    <div className="p-4 rounded-lg bg-slate-50 dark:bg-slate-800/50">
+                      <FileText className="w-8 h-8 text-emerald-500 mb-2" />
+                      <h4 className="font-medium">2. Agrega textos</h4>
+                      <p className="text-sm text-slate-500">Escribe precios, servicios, horarios y cualquier información relevante</p>
+                    </div>
+                    <div className="p-4 rounded-lg bg-slate-50 dark:bg-slate-800/50">
+                      <Brain className="w-8 h-8 text-purple-500 mb-2" />
+                      <h4 className="font-medium">3. El bot aprende</h4>
+                      <p className="text-sm text-slate-500">La IA usa esta información para responder preguntas de clientes</p>
+                    </div>
                   </div>
                 </CardContent>
               </Card>
+            </TabsContent>
+
+            {/* Config Tab */}
+            <TabsContent value="config" className="space-y-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <Card className="border-0 shadow-md">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Shield className="w-5 h-5 text-emerald-500" />
+                      Conexión del Bot
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                      <Label>Token del Bot</Label>
+                      <Input
+                        type="password"
+                        placeholder="123456789:ABCdefGHI..."
+                        value={tokenInput}
+                        onChange={(e) => setTokenInput(e.target.value)}
+                      />
+                      <p className="text-xs text-slate-500">Obtén tu token de @BotFather en Telegram</p>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label>URL Pública</Label>
+                      <Input
+                        placeholder="https://tu-servidor.com"
+                        value={webhookUrl}
+                        onChange={(e) => setWebhookUrl(e.target.value)}
+                      />
+                    </div>
+                    
+                    {status?.isConnected ? (
+                      <Button variant="destructive" onClick={handleDisconnectBot} disabled={isConnecting} className="w-full">
+                        {isConnecting ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <XCircle className="w-4 h-4 mr-2" />}
+                        Desconectar Bot
+                      </Button>
+                    ) : (
+                      <Button onClick={handleConnectBot} disabled={isConnecting} className="w-full">
+                        {isConnecting ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Zap className="w-4 h-4 mr-2" />}
+                        Conectar Bot
+                      </Button>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card className="border-0 shadow-md">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Sparkles className="w-5 h-5 text-purple-500" />
+                      Personalidad del Bot
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                      <Label>System Prompt</Label>
+                      <Textarea
+                        placeholder="Eres un asistente amable..."
+                        className="min-h-48"
+                        value={systemPrompt}
+                        onChange={(e) => setSystemPrompt(e.target.value)}
+                      />
+                    </div>
+                    <Button onClick={handleUpdatePrompt} className="w-full">Guardar Prompt</Button>
+                  </CardContent>
+                </Card>
+              </div>
+            </TabsContent>
+
+            {/* Learning Tab */}
+            <TabsContent value="learning" className="space-y-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <Card className="border-0 shadow-md">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Plus className="w-5 h-5 text-emerald-500" />
+                      Enseñar al Bot
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                      <Label>Cuando el cliente pregunte...</Label>
+                      <Textarea
+                        placeholder="Ej: ¿Cuánto cuesta el servicio?"
+                        value={newFeedback.triggerText}
+                        onChange={(e) => setNewFeedback({ ...newFeedback, triggerText: e.target.value })}
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label>El bot debe responder...</Label>
+                      <Textarea
+                        placeholder="Ej: Nuestros precios son: Plan Básico $50, Plan Pro $100..."
+                        value={newFeedback.correction}
+                        onChange={(e) => setNewFeedback({ ...newFeedback, correction: e.target.value })}
+                      />
+                    </div>
+                    
+                    <Button onClick={handleAddFeedback} className="w-full">
+                      <Brain className="w-4 h-4 mr-2" />
+                      Guardar Aprendizaje
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-0 shadow-md">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Brain className="w-5 h-5 text-purple-500" />
+                      Aprendizajes Guardados
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {feedbacks.length === 0 ? (
+                      <div className="text-center py-8">
+                        <Brain className="w-12 h-12 mx-auto text-slate-300 dark:text-slate-600 mb-2" />
+                        <p className="text-slate-500">No hay aprendizajes guardados</p>
+                      </div>
+                    ) : (
+                      <ScrollArea className="h-64">
+                        <div className="space-y-3">
+                          {feedbacks.map((fb) => (
+                            <div key={fb.id} className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50 border">
+                              <p className="text-sm font-medium">"{fb.triggerText}"</p>
+                              <p className="text-xs text-slate-500 mt-1">{fb.correction}</p>
+                              <div className="flex justify-end mt-2">
+                                <Button variant="ghost" size="sm" onClick={() => handleDeleteFeedback(fb.id)}>
+                                  <Trash2 className="w-4 h-4 text-red-500" />
+                                </Button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </ScrollArea>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
             </TabsContent>
           </Tabs>
         )}
@@ -1059,14 +1067,5 @@ export default function Dashboard() {
         </div>
       </footer>
     </div>
-  );
-}
-
-// Missing import
-function Save({ className }: { className?: string }) {
-  return (
-    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
-    </svg>
   );
 }

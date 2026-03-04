@@ -21,10 +21,19 @@ export async function GET() {
       authToken: process.env.DATABASE_AUTH_TOKEN,
     });
     
-    // Probar conexión
-    const result = await client.execute("SELECT name FROM sqlite_master WHERE type='table'");
+    // Probar conexión con consulta simple
+    const result = await client.execute('SELECT 1 as test');
     
-    console.log('[Test DB] Tables found:', result.rows.length);
+    // Verificar tabla BotConfig
+    let tables = [];
+    try {
+      const tablesResult = await client.execute('SELECT name FROM sqlite_master');
+      tables = tablesResult.rows.map(r => r.name);
+    } catch (e) {
+      tables = ['Could not list tables'];
+    }
+    
+    console.log('[Test DB] Connection successful');
     
     return NextResponse.json({
       success: true,

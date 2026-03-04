@@ -72,25 +72,28 @@ export async function POST(request: NextRequest) {
     // Verificar si existe configuración
     const existing = await client.execute('SELECT * FROM BotConfig LIMIT 1');
     
-    if (existing.rows.length === 0) {
-      // Crear nueva configuración
+    const existingId = existing.rows.length > 0 ? (existing.rows[0] as Record<string, unknown>).id : null;
+    
+    if (!existingId) {
+      // Crear nueva configuración con ID dinámico
+      const newId = Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
       const isActiveValue = isActive ? 1 : 0;
       await client.execute({
         sql: 'INSERT INTO BotConfig (id, token, systemPrompt, isActive, aiProvider, aiApiKey, aiModel) VALUES (?, ?, ?, ?, ?, ?, ?)',
         args: [
-          'default', 
+          newId, 
           token || null, 
           systemPrompt || 'Eres un asistente amable.', 
           isActiveValue,
-          aiProvider || 'zai',
+          aiProvider || 'gemini',
           aiApiKey || null,
-          aiModel || 'gpt-4o-mini'
+          aiModel || 'gemini-2.5-flash-preview-05-20'
         ]
       });
       
-      console.log('[Config] Created new config');
+      console.log('[Config] Created new config with id:', newId);
     } else {
-      // Actualizar configuración existente
+      // Actualizar configuración existente usando el ID real
       const updates: string[] = [];
       const args: (string | number | null)[] = [];
       
@@ -120,10 +123,10 @@ export async function POST(request: NextRequest) {
       }
       
       if (updates.length > 0) {
-        args.push('default'); // WHERE id = 'default'
+        args.push(existingId as string); // WHERE id = existingId
         const sql = `UPDATE BotConfig SET ${updates.join(', ')}, updatedAt = CURRENT_TIMESTAMP WHERE id = ?`;
         await client.execute({ sql, args });
-        console.log('[Config] Updated successfully');
+        console.log('[Config] Updated config with id:', existingId);
       }
     }
     

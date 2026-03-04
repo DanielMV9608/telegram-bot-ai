@@ -419,39 +419,54 @@ async function processWithGemini(
   systemPrompt: string,
   conversationHistory: Array<{ role: string; content: string }>,
   apiKey: string,
-  model: string = 'gemini-1.5-flash'
+  model: string = 'gemini-2.5-flash-preview-05-20'
 ): Promise<string> {
   try {
-    // Construir el contexto
-    let context = systemPrompt + '\n\n';
-    
-    // Agregar historial
+    // Construir historial de conversación
     const recentHistory = conversationHistory.slice(-10);
+    const contents: Array<{ role: string; parts: Array<{ text: string }> }> = [];
+    
+    // Agregar historial en el formato correcto para Gemini
     for (const msg of recentHistory) {
-      context += `${msg.role === 'user' ? 'Usuario' : 'Asistente'}: ${msg.content}\n`;
+      contents.push({
+        role: msg.role === 'user' ? 'user' : 'model',
+        parts: [{ text: msg.content }]
+      });
     }
+    
+    // Agregar mensaje actual
+    contents.push({
+      role: 'user',
+      parts: [{ text: userMessage }]
+    });
     
     // Usar v1beta para todos los modelos de Gemini
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
     
     console.log('[Gemini] Using model:', model);
+    console.log('[Gemini] Contents count:', contents.length);
+    
+    const requestBody: Record<string, unknown> = {
+      contents,
+      generationConfig: {
+        maxOutputTokens: 1000,
+        temperature: 0.7
+      }
+    };
+    
+    // Agregar systemInstruction como campo separado
+    if (systemPrompt) {
+      requestBody.systemInstruction = {
+        parts: [{ text: systemPrompt }]
+      };
+    }
     
     const response = await fetch(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-        contents: [{
-          parts: [{
-            text: `${context}\nUsuario: ${userMessage}\nAsistente:`
-          }]
-        }],
-        generationConfig: {
-          maxOutputTokens: 1000,
-          temperature: 0.7
-        }
-      })
+      body: JSON.stringify(requestBody)
     });
     
     if (!response.ok) {
@@ -613,15 +628,9 @@ export async function POST(request: NextRequest) {
     
     const token = config.token as string;
     const systemPrompt = config.systemPrompt as string;
-    let aiProvider = (config.aiProvider as string) || 'zai';
-    let aiApiKey = config.aiApiKey as string | null;
-    let aiModel = (config.aiModel as string) || 'gemini-1.5-flash';
-    
-    // Corregir modelos inválidos de Gemini
-    if (aiProvider === 'gemini' && aiModel.includes('2.5')) {
-      console.log('[Webhook] Invalid Gemini model, correcting to gemini-1.5-flash');
-      aiModel = 'gemini-1.5-flash';
-    }
+    const aiProvider = (config.aiProvider as string) || 'gemini';
+    const aiApiKey = config.aiApiKey as string | null;
+    const aiModel = (config.aiModel as string) || 'gemini-2.5-flash-preview-05-20';
     
     console.log('[Webhook] Config:', {
       provider: aiProvider,

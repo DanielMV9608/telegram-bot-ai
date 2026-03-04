@@ -713,16 +713,21 @@ export async function POST(request: NextRequest) {
       args: [generateId(), leadId, 'incoming', userMessage, 'text']
     });
     
-    // Obtener historial
+    // Obtener historial ANTERIOR al mensaje actual (para no duplicar)
     const historyResult = await client.execute({
-      sql: 'SELECT direction, content FROM Message WHERE leadId = ? ORDER BY createdAt ASC LIMIT 20',
+      sql: 'SELECT direction, content FROM Message WHERE leadId = ? ORDER BY createdAt DESC LIMIT 10',
       args: [leadId]
     });
     
-    const conversationHistory = historyResult.rows.map(r => ({
+    // Invertir para tener orden cronológico y excluir el mensaje actual (el último guardado)
+    const rawHistory = historyResult.rows.reverse().slice(0, -1);
+    
+    const conversationHistory = rawHistory.map(r => ({
       role: (r.direction === 'incoming' ? 'user' : 'assistant') as 'user' | 'assistant',
       content: r.content as string
     }));
+    
+    console.log('[Webhook] History length:', conversationHistory.length);
     
     // Detectar feedback
     const isFeedback = userMessage.toLowerCase().includes('bot, no') || 
@@ -772,107 +777,10 @@ export async function POST(request: NextRequest) {
       if (extractedData.email) leadEmail = extractedData.email;
     }
     
-    // Detectar intención de reserva
-    const reservationIntent = detectReservationIntent(userMessage);
-    
-    if (reservationIntent.isReservation) {
-      console.log('[Webhook] Reservation intent detected:', reservationIntent);
-      
-      // Verificar si Google Calendar está configurado
-      const googleTokens = await getGoogleTokens();
-      const hasGoogleConfig = !!(googleTokens.clientId && googleTokens.clientSecret && googleTokens.refreshToken && googleTokens.calendarId);
-      
-      if (hasGoogleConfig && reservationIntent.date && reservationIntent.time) {
-        try {
-          // Obtener access token
-          const accessToken = await getGoogleAccessToken(
-            googleTokens.clientId!,
-            googleTokens.clientSecret!,
-            googleTokens.refreshToken!
-          );
-          
-          // Obtener datos del lead para la reserva
-          const leadName = existingFirstName || userFirstName || 'Cliente';
-          const leadPhone = existingPhone || undefined;
-          
-          // Crear evento en Google Calendar
-          const event = await createGoogleCalendarEvent(accessToken, googleTokens.calendarId!, {
-            leadName,
-            leadEmail: leadEmail || undefined,
-            leadPhone,
-            date: reservationIntent.date,
-            time: reservationIntent.time,
-          });
-          
-          // Guardar reserva en BD
-          await saveReservation({
-            leadId,
-            leadName,
-            leadEmail: leadEmail || undefined,
-            leadPhone,
-            date: reservationIntent.date,
-            time: reservationIntent.time,
-          }, event.id, event.htmlLink);
-          
-          // Formatear fecha para respuesta
-          const dateObj = new Date(reservationIntent.date);
-          const formattedDate = dateObj.toLocaleDateString('es-ES', {
-            weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
-          });
-          
-          // Enviar email de confirmación si hay email
-          let emailSent = false;
-          if (leadEmail) {
-            emailSent = await sendConfirmationEmail(leadEmail, {
-              leadName,
-              date: reservationIntent.date,
-              time: reservationIntent.time,
-              googleEventLink: event.htmlLink,
-            });
-          }
-          
-          // Responder al usuario
-          let responseMessage = `✅ *¡Reserva confirmada!*\n\n📅 ${formattedDate}\n🕐 ${reservationIntent.time}\n\nTu reserva ha sido guardada en el calendario.`;
-          
-          if (leadEmail && emailSent) {
-            responseMessage += `\n\n📧 Te he enviado un email de confirmación a ${leadEmail}.`;
-          } else if (!leadEmail) {
-            responseMessage += `\n\n💡 *Tip:* Si me das tu email, te enviaré una confirmación.`;
-          }
-          
-          await sendTelegramMessage(token, chatId, responseMessage);
-          
-          // Guardar mensaje saliente
-          await client.execute({
-            sql: 'INSERT INTO Message (id, leadId, direction, content, messageType) VALUES (?, ?, ?, ?, ?)',
-            args: [generateId(), leadId, 'outgoing', responseMessage, 'text']
-          });
-          
-          return NextResponse.json({ ok: true });
-        } catch (error) {
-          console.error('[Webhook] Reservation error:', error);
-          // Continuar con el flujo normal si falla la reserva
-        }
-      } else if (!reservationIntent.date || !reservationIntent.time) {
-        // Falta información de fecha/hora
-        let responseMessage = '📅 *Para hacer tu reserva, necesito saber:*\n\n';
-        if (!reservationIntent.date) responseMessage += '• ¿Qué día? (ej: mañana, lunes, 15 de enero)\n';
-        if (!reservationIntent.time) responseMessage += '• ¿A qué hora? (ej: 3pm, 10:00)\n\n';
-        responseMessage += 'Ejemplo: "Quiero reservar para el martes a las 4pm"';
-        
-        await sendTelegramMessage(token, chatId, responseMessage);
-        
-        await client.execute({
-          sql: 'INSERT INTO Message (id, leadId, direction, content, messageType) VALUES (?, ?, ?, ?, ?)',
-          args: [generateId(), leadId, 'outgoing', responseMessage, 'text']
-        });
-        
-        return NextResponse.json({ ok: true });
-      } else {
-        // Google Calendar no está configurado
-        console.log('[Webhook] Google Calendar not configured, passing to AI');
-      }
-    }
+    // NOTA: La detección automática de reservas está desactivada temporalmente
+    // La IA ahora maneja todo el flujo de conversación con contexto
+    // Esto permite una experiencia más natural sin perder el hilo
+    console.log('[Webhook] Skipping auto-reservation, letting AI handle context');
     
     // Obtener feedback y conocimiento
     let activeFeedbacks: Array<{ triggerText: string; correction: string }> = [];

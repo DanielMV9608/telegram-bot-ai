@@ -1,37 +1,45 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { createClient } from '@libsql/client';
+
+const getClient = () => createClient({
+  url: process.env.DATABASE_URL!,
+  authToken: process.env.DATABASE_AUTH_TOKEN,
+});
 
 // GET - Obtener configuración actual del bot
 export async function GET() {
   try {
-    const configs = await db.botConfig.findMany();
-    let config = configs[0];
+    const client = getClient();
+    const result = await client.execute('SELECT * FROM BotConfig LIMIT 1');
     
-    if (!config) {
-      config = await db.botConfig.create({
-        data: {
-          id: 'default',
-          systemPrompt: `Eres un asistente de atención al cliente amable y profesional. Tu objetivo es ayudar a los clientes y capturar sus datos (nombre y número de teléfono) cuando muestren interés en los servicios.
-
-Instrucciones:
-1. Sé cordial y útil en todo momento
-2. Si el cliente pregunta por servicios, explica brevemente y pregunta si le gustaría más información
-3. Cuando el cliente muestre interés, pide su nombre y número de teléfono de forma natural
-4. Nunca presiones demasiado
-5. Si el cliente te da sus datos, agradécele y confírmale que alguien se pondrá en contacto pronto
-
-Responde siempre en el mismo idioma que el cliente use.`
+    if (result.rows.length === 0) {
+      // Crear configuración inicial
+      await client.execute(`
+        INSERT INTO BotConfig (id, systemPrompt, isActive)
+        VALUES ('default', 'Eres un asistente de atención al cliente amable y profesional.', 0)
+      `);
+      
+      const newResult = await client.execute('SELECT * FROM BotConfig LIMIT 1');
+      const config = newResult.rows[0] as Record<string, unknown>;
+      
+      return NextResponse.json({ 
+        success: true, 
+        config: {
+          ...config,
+          token: config.token ? String(config.token).substring(0, 10) + '...' : null,
         }
       });
     }
     
-    // No exponer el token completo por seguridad
-    const safeConfig = {
-      ...config,
-      token: config.token ? `${config.token.substring(0, 10)}...` : null,
-    };
+    const config = result.rows[0] as Record<string, unknown>;
     
-    return NextResponse.json({ success: true, config: safeConfig });
+    return NextResponse.json({ 
+      success: true, 
+      config: {
+        ...config,
+        token: config.token ? String(config.token).substring(0, 10) + '...' : null,
+      }
+    });
   } catch (error) {
     console.error('Error getting bot config:', error);
     return NextResponse.json({ 
@@ -50,53 +58,55 @@ export async function POST(request: NextRequest) {
     
     console.log('[Config] Updating config:', { hasToken: !!token, hasSystemPrompt: !!systemPrompt, isActive });
     
-    // Buscar config existente
-    const configs = await db.botConfig.findMany();
-    const existingConfig = configs[0];
+    const client = getClient();
     
-    if (!existingConfig) {
-      // Crear nueva config
-      const newConfig = await db.botConfig.create({
-        data: {
-          id: 'default',
-          token: token || null,
-          systemPrompt: systemPrompt || 'Eres un asistente amable.',
-          isActive: isActive ?? false
-        }
+    // Verificar si existe configuración
+    const existing = await client.execute('SELECT * FROM BotConfig LIMIT 1');
+    
+    if (existing.rows.length === 0) {
+      // Crear nueva configuración
+      const isActiveValue = isActive ? 1 : 0;
+      await client.execute({
+        sql: 'INSERT INTO BotConfig (id, token, systemPrompt, isActive) VALUES (?, ?, ?, ?)',
+        args: ['default', token || null, systemPrompt || 'Eres un asistente amable.', isActiveValue]
       });
       
       console.log('[Config] Created new config');
+    } else {
+      // Actualizar configuración existente
+      const updates: string[] = [];
+      const args: (string | number | null)[] = [];
       
-      return NextResponse.json({ 
-        success: true, 
-        config: {
-          ...newConfig,
-          token: newConfig.token ? `${newConfig.token.substring(0, 10)}...` : null,
-        }
-      });
+      if (token !== undefined) {
+        updates.push('token = ?');
+        args.push(token || null);
+      }
+      if (systemPrompt !== undefined) {
+        updates.push('systemPrompt = ?');
+        args.push(systemPrompt);
+      }
+      if (isActive !== undefined) {
+        updates.push('isActive = ?');
+        args.push(isActive ? 1 : 0);
+      }
+      
+      if (updates.length > 0) {
+        args.push('default'); // WHERE id = 'default'
+        const sql = `UPDATE BotConfig SET ${updates.join(', ')}, updatedAt = CURRENT_TIMESTAMP WHERE id = ?`;
+        await client.execute({ sql, args });
+        console.log('[Config] Updated successfully');
+      }
     }
     
-    // Actualizar config existente
-    const updateData: Record<string, unknown> = {};
-    
-    if (token !== undefined) updateData.token = token;
-    if (systemPrompt !== undefined) updateData.systemPrompt = systemPrompt;
-    if (isActive !== undefined) updateData.isActive = isActive;
-    
-    console.log('[Config] Update data:', updateData);
-    
-    const updatedConfig = await db.botConfig.update({
-      where: { id: existingConfig.id },
-      data: updateData
-    });
-    
-    console.log('[Config] Updated successfully');
+    // Obtener configuración actualizada
+    const result = await client.execute('SELECT * FROM BotConfig LIMIT 1');
+    const config = result.rows[0] as Record<string, unknown>;
     
     return NextResponse.json({ 
       success: true, 
       config: {
-        ...updatedConfig,
-        token: updatedConfig.token ? `${updatedConfig.token.substring(0, 10)}...` : null,
+        ...config,
+        token: config.token ? String(config.token).substring(0, 10) + '...' : null,
       }
     });
   } catch (error) {

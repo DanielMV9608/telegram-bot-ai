@@ -1,54 +1,54 @@
 import { NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { createClient } from '@libsql/client';
+
+const getClient = () => createClient({
+  url: process.env.DATABASE_URL!,
+  authToken: process.env.DATABASE_AUTH_TOKEN,
+});
 
 export async function GET() {
   try {
-    const config = await db.botConfig.findFirst();
+    const client = getClient();
     
-    // Obtener estadísticas de hoy
-    const today = new Date().toISOString().split('T')[0];
-    const todayStats = await db.botStats.findUnique({
-      where: { date: today }
-    });
+    // Obtener configuración del bot
+    const configResult = await client.execute('SELECT * FROM BotConfig LIMIT 1');
+    const config = configResult.rows[0] as Record<string, unknown> | undefined;
     
     // Contar leads totales
-    const totalLeads = await db.lead.count();
+    const totalLeadsResult = await client.execute('SELECT COUNT(*) as count FROM Lead');
+    const totalLeads = Number(totalLeadsResult.rows[0]?.count || 0);
     
     // Contar leads de hoy
-    const todayLeads = await db.lead.count({
-      where: {
-        createdAt: {
-          gte: new Date(today)
-        }
-      }
+    const today = new Date().toISOString().split('T')[0];
+    const todayLeadsResult = await client.execute({
+      sql: "SELECT COUNT(*) as count FROM Lead WHERE date(createdAt) = ?",
+      args: [today]
     });
+    const todayLeads = Number(todayLeadsResult.rows[0]?.count || 0);
     
     // Contar mensajes de hoy
-    const todayMessages = await db.message.count({
-      where: {
-        createdAt: {
-          gte: new Date(today)
-        }
-      }
+    const todayMessagesResult = await client.execute({
+      sql: "SELECT COUNT(*) as count FROM Message WHERE date(createdAt) = ?",
+      args: [today]
     });
-
+    const todayMessages = Number(todayMessagesResult.rows[0]?.count || 0);
+    
     // Contar feedback activo
-    const activeFeedback = await db.feedback.count({
-      where: { isActive: true }
-    });
+    const activeFeedbackResult = await client.execute("SELECT COUNT(*) as count FROM Feedback WHERE isActive = 1");
+    const activeFeedback = Number(activeFeedbackResult.rows[0]?.count || 0);
     
     return NextResponse.json({
       success: true,
       status: {
-        isConnected: config?.isActive && !!config?.token,
-        isActive: config?.isActive || false,
+        isConnected: Boolean(config?.isActive) && !!config?.token,
+        isActive: Boolean(config?.isActive),
         hasToken: !!config?.token,
         botUsername: config?.botUsername || null,
         todayStats: {
-          messagesIn: todayStats?.messagesIn || 0,
-          messagesOut: todayStats?.messagesOut || 0,
-          leadsCaptured: todayStats?.leadsCaptured || 0,
-          uniqueUsers: todayStats?.uniqueUsers || 0
+          messagesIn: 0,
+          messagesOut: 0,
+          leadsCaptured: todayLeads,
+          uniqueUsers: 0
         },
         totalLeads,
         todayLeads,
@@ -58,6 +58,10 @@ export async function GET() {
     });
   } catch (error) {
     console.error('Error getting bot status:', error);
-    return NextResponse.json({ success: false, error: 'Error al obtener estado' }, { status: 500 });
+    return NextResponse.json({ 
+      success: false, 
+      error: 'Error al obtener estado',
+      details: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 });
   }
 }

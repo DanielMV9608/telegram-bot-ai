@@ -942,20 +942,9 @@ export async function POST(request: NextRequest) {
       const errorMessage = aiError instanceof Error ? aiError.message : 'Unknown error';
       console.error('[Webhook] AI Error:', errorMessage, aiError);
       
-      // IMPORTANTE: Enviar el error REAL a Telegram para diagnosticar
-      if (effectiveProvider !== 'zai') {
-        console.log('[Webhook] Trying z-ai as fallback...');
-        try {
-          aiResponse = await processWithZAI(userMessage, systemPrompt, conversationHistory);
-        } catch (fallbackError) {
-          console.error('[Webhook] Fallback also failed:', fallbackError);
-          // ENVIAR ERROR REAL PARA DIAGNÓSTICO
-          aiResponse = `🔴 ERROR DETECTADO:\n\n${errorMessage}\n\nProvider: ${effectiveProvider}\nModel: ${aiModel}\nHasKey: ${!!effectiveApiKey}`;
-        }
-      } else {
-        // ENVIAR ERROR REAL PARA DIAGNÓSTICO
-        aiResponse = `🔴 ERROR DETECTADO:\n\n${errorMessage}\n\nProvider: ${effectiveProvider}\nModel: ${aiModel}\nHasKey: ${!!effectiveApiKey}`;
-      }
+      // ENVIAR ERROR DIRECTO A TELEGRAM PARA DIAGNÓSTICO
+      // No intentar fallback, mejor que el usuario vea el error real
+      aiResponse = `🔴 ERROR:\n\n${errorMessage}\n\n📱 Provider: ${effectiveProvider}\n🤖 Model: ${aiModel}\n🔑 HasKey: ${!!effectiveApiKey}`;
     }
     
     // Guardar mensaje saliente

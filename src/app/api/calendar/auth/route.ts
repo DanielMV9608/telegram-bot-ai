@@ -68,13 +68,18 @@ export async function GET(request: NextRequest) {
     const tokens = await tokenResponse.json();
     
     // Guardar refresh token en la base de datos
-    await client.execute({
-      sql: `UPDATE BotConfig SET 
-        googleRefreshToken = ?,
-        updatedAt = CURRENT_TIMESTAMP
-      WHERE id = ?`,
-      args: [tokens.refresh_token, 'default'],
-    });
+    const existingConfig = await client.execute('SELECT id FROM BotConfig LIMIT 1');
+    
+    if (existingConfig.rows.length > 0) {
+      const rowId = existingConfig.rows[0].id;
+      await client.execute({
+        sql: `UPDATE BotConfig SET 
+          googleRefreshToken = ?,
+          updatedAt = CURRENT_TIMESTAMP
+        WHERE id = ?`,
+        args: [tokens.refresh_token, rowId as string],
+      });
+    }
     
     console.log('[Google Auth] Tokens saved successfully');
     
@@ -92,7 +97,16 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { clientId, clientSecret, calendarId, refreshToken } = body;
     
+    console.log('[Google Auth] Saving config:', { 
+      hasClientId: !!clientId, 
+      hasClientSecret: !!clientSecret, 
+      calendarId 
+    });
+    
     const client = getClient();
+    
+    // Verificar si existe configuración
+    const existing = await client.execute('SELECT id FROM BotConfig LIMIT 1');
     
     const updates: string[] = [];
     const args: (string | null)[] = [];
@@ -115,19 +129,32 @@ export async function POST(request: NextRequest) {
     }
     
     if (updates.length > 0) {
-      args.push('default');
-      await client.execute({
-        sql: `UPDATE BotConfig SET ${updates.join(', ')}, updatedAt = CURRENT_TIMESTAMP WHERE id = ?`,
-        args,
-      });
+      if (existing.rows.length === 0) {
+        // Crear nueva configuración
+        await client.execute({
+          sql: `INSERT INTO BotConfig (id, googleClientId, googleClientSecret, googleCalendarId, googleRefreshToken, systemPrompt, isActive) 
+                VALUES ('default', ?, ?, ?, ?, 'Eres un asistente amable.', 0)`,
+          args: [clientId || null, clientSecret || null, calendarId || null, refreshToken || null],
+        });
+      } else {
+        // Actualizar configuración existente
+        const rowId = existing.rows[0].id;
+        args.push(rowId as string);
+        await client.execute({
+          sql: `UPDATE BotConfig SET ${updates.join(', ')}, updatedAt = CURRENT_TIMESTAMP WHERE id = ?`,
+          args,
+        });
+      }
     }
     
+    console.log('[Google Auth] Config saved successfully');
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error('[Google Auth] Error saving config:', error);
     return NextResponse.json({
       success: false,
       error: 'Error al guardar configuración',
+      details: error instanceof Error ? error.message : 'Unknown error',
     }, { status: 500 });
   }
 }
@@ -136,13 +163,18 @@ export async function POST(request: NextRequest) {
 export async function DELETE() {
   try {
     const client = getClient();
-    await client.execute({
-      sql: `UPDATE BotConfig SET 
-        googleRefreshToken = NULL,
-        updatedAt = CURRENT_TIMESTAMP
-      WHERE id = ?`,
-      args: ['default'],
-    });
+    
+    const existing = await client.execute('SELECT id FROM BotConfig LIMIT 1');
+    if (existing.rows.length > 0) {
+      const rowId = existing.rows[0].id;
+      await client.execute({
+        sql: `UPDATE BotConfig SET 
+          googleRefreshToken = NULL,
+          updatedAt = CURRENT_TIMESTAMP
+        WHERE id = ?`,
+        args: [rowId as string],
+      });
+    }
     
     return NextResponse.json({ success: true });
   } catch (error) {

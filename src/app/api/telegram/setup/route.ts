@@ -1,18 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { createClient } from '@libsql/client';
+
+const getClient = () => createClient({
+  url: process.env.DATABASE_URL!,
+  authToken: process.env.DATABASE_AUTH_TOKEN,
+});
 
 // POST - Configurar webhook en Telegram
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { action, webhookUrl } = body;
+    const { action, webhookUrl, token } = body;
     
-    const config = await db.botConfig.findFirst();
+    const client = getClient();
     
-    if (!config || !config.token) {
+    // Obtener configuración actual
+    const configResult = await client.execute('SELECT * FROM BotConfig LIMIT 1');
+    const config = configResult.rows[0] as Record<string, unknown> | undefined;
+    
+    // Si se envía token nuevo, guardarlo primero
+    let botToken = token || config?.token;
+    
+    if (!botToken) {
       return NextResponse.json({ 
         success: false, 
-        error: 'No hay token configurado' 
+        error: 'No hay token configurado. Pega el token de tu bot primero.' 
       }, { status: 400 });
     }
     
@@ -24,8 +36,10 @@ export async function POST(request: NextRequest) {
         }, { status: 400 });
       }
       
+      console.log('[Setup] Setting webhook to:', `${webhookUrl}/api/telegram/webhook`);
+      
       // Configurar webhook en Telegram
-      const url = `https://api.telegram.org/bot${config.token}/setWebhook`;
+      const url = `https://api.telegram.org/bot${botToken}/setWebhook`;
       const response = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -36,20 +50,18 @@ export async function POST(request: NextRequest) {
       });
       
       const result = await response.json();
+      console.log('[Setup] Telegram response:', result);
       
       if (result.ok) {
         // Obtener info del bot
-        const meUrl = `https://api.telegram.org/bot${config.token}/getMe`;
+        const meUrl = `https://api.telegram.org/bot${botToken}/getMe`;
         const meResponse = await fetch(meUrl);
         const meResult = await meResponse.json();
         
-        await db.botConfig.update({
-          where: { id: config.id },
-          data: {
-            webhookUrl,
-            botUsername: meResult.ok ? meResult.result.username : null,
-            isActive: true
-          }
+        // Actualizar en base de datos
+        await client.execute({
+          sql: "UPDATE BotConfig SET token = ?, webhookUrl = ?, botUsername = ?, isActive = 1, updatedAt = CURRENT_TIMESTAMP WHERE id = 'default'",
+          args: [botToken, webhookUrl, meResult.ok ? meResult.result.username : null]
         });
         
         return NextResponse.json({
@@ -65,17 +77,14 @@ export async function POST(request: NextRequest) {
       }
     } else if (action === 'delete') {
       // Eliminar webhook
-      const url = `https://api.telegram.org/bot${config.token}/deleteWebhook`;
+      const url = `https://api.telegram.org/bot${botToken}/deleteWebhook`;
       const response = await fetch(url);
       const result = await response.json();
       
       if (result.ok) {
-        await db.botConfig.update({
-          where: { id: config.id },
-          data: {
-            webhookUrl: null,
-            isActive: false
-          }
+        await client.execute({
+          sql: "UPDATE BotConfig SET webhookUrl = NULL, isActive = 0, updatedAt = CURRENT_TIMESTAMP WHERE id = 'default'",
+          args: []
         });
         
         return NextResponse.json({
@@ -90,7 +99,7 @@ export async function POST(request: NextRequest) {
       }
     } else if (action === 'info') {
       // Obtener info del webhook
-      const url = `https://api.telegram.org/bot${config.token}/getWebhookInfo`;
+      const url = `https://api.telegram.org/bot${botToken}/getWebhookInfo`;
       const response = await fetch(url);
       const result = await response.json();
       
@@ -108,7 +117,8 @@ export async function POST(request: NextRequest) {
     console.error('Error in webhook setup:', error);
     return NextResponse.json({ 
       success: false, 
-      error: 'Error al procesar solicitud' 
+      error: 'Error al procesar solicitud',
+      details: error instanceof Error ? error.message : 'Unknown error'
     }, { status: 500 });
   }
 }

@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { db } from '@/lib/db';
+import { createClient } from '@libsql/client';
 import ZAI from 'z-ai-web-dev-sdk';
+
+const getClient = () => createClient({
+  url: process.env.DATABASE_URL!,
+  authToken: process.env.DATABASE_AUTH_TOKEN,
+});
 
 interface TelegramUpdate {
   update_id: number;
@@ -130,45 +135,17 @@ async function processWithAI(
   }
 }
 
-// Función para actualizar estadísticas
-async function updateStats(type: 'in' | 'out' | 'lead', uniqueUserId?: string) {
-  const today = new Date().toISOString().split('T')[0];
-  
-  try {
-    const existing = await db.botStats.findUnique({
-      where: { date: today }
-    });
-    
-    if (existing) {
-      const updateData: Record<string, number> = {};
-      if (type === 'in') updateData.messagesIn = existing.messagesIn + 1;
-      if (type === 'out') updateData.messagesOut = existing.messagesOut + 1;
-      if (type === 'lead') updateData.leadsCaptured = existing.leadsCaptured + 1;
-      
-      await db.botStats.update({
-        where: { date: today },
-        data: updateData
-      });
-    } else {
-      await db.botStats.create({
-        data: {
-          date: today,
-          messagesIn: type === 'in' ? 1 : 0,
-          messagesOut: type === 'out' ? 1 : 0,
-          leadsCaptured: type === 'lead' ? 1 : 0,
-          uniqueUsers: 1
-        }
-      });
-    }
-  } catch (error) {
-    console.error('Error updating stats:', error);
-  }
+// Generar ID único
+function generateId(): string {
+  return Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15);
 }
 
 // POST - Webhook de Telegram
 export async function POST(request: NextRequest) {
   try {
     const body: TelegramUpdate = await request.json();
+    
+    console.log('[Telegram] Received update:', JSON.stringify(body));
     
     // Verificar que sea un mensaje válido
     if (!body.message || !body.message.text) {
@@ -185,51 +162,61 @@ export async function POST(request: NextRequest) {
     
     console.log(`[Telegram] Message from ${userFirstName} (${userId}): ${userMessage}`);
     
+    const client = getClient();
+    
     // Obtener configuración del bot
-    const config = await db.botConfig.findFirst();
+    const configResult = await client.execute('SELECT * FROM BotConfig LIMIT 1');
+    const config = configResult.rows[0] as Record<string, unknown> | undefined;
     
     if (!config || !config.token || !config.isActive) {
       console.log('[Telegram] Bot not configured or inactive');
       return NextResponse.json({ ok: true });
     }
     
+    const token = config.token as string;
+    const systemPrompt = config.systemPrompt as string;
+    
     // Buscar o crear lead
-    let lead = await db.lead.findFirst({
-      where: { telegramId: userId },
-      include: {
-        messages: {
-          orderBy: { createdAt: 'asc' },
-          take: 20
-        }
-      }
+    let leadId: string;
+    let existingPhone: string | null = null;
+    let existingFirstName: string | null = null;
+    
+    const leadResult = await client.execute({
+      sql: 'SELECT * FROM Lead WHERE telegramId = ?',
+      args: [userId]
     });
     
-    if (!lead) {
-      lead = await db.lead.create({
-        data: {
-          telegramId: userId,
-          firstName: userFirstName,
-          lastName: userLastName,
-          username,
-          status: 'new'
-        },
-        include: { messages: [] }
+    if (leadResult.rows.length === 0) {
+      // Crear nuevo lead
+      leadId = generateId();
+      await client.execute({
+        sql: 'INSERT INTO Lead (id, telegramId, firstName, lastName, username, status) VALUES (?, ?, ?, ?, ?, ?)',
+        args: [leadId, userId, userFirstName || null, userLastName || null, username || null, 'new']
       });
       console.log(`[Telegram] New lead created: ${userId}`);
+    } else {
+      const lead = leadResult.rows[0] as Record<string, unknown>;
+      leadId = lead.id as string;
+      existingPhone = lead.phone as string | null;
+      existingFirstName = lead.firstName as string | null;
     }
     
     // Guardar mensaje entrante
-    await db.message.create({
-      data: {
-        leadId: lead.id,
-        direction: 'incoming',
-        content: userMessage,
-        messageType: 'text'
-      }
+    await client.execute({
+      sql: 'INSERT INTO Message (id, leadId, direction, content, messageType) VALUES (?, ?, ?, ?, ?)',
+      args: [generateId(), leadId, 'incoming', userMessage, 'text']
     });
     
-    // Actualizar estadísticas
-    await updateStats('in');
+    // Obtener historial de conversación
+    const historyResult = await client.execute({
+      sql: 'SELECT direction, content FROM Message WHERE leadId = ? ORDER BY createdAt ASC LIMIT 20',
+      args: [leadId]
+    });
+    
+    const conversationHistory = historyResult.rows.map(r => ({
+      role: (r.direction === 'incoming' ? 'user' : 'assistant') as 'user' | 'assistant',
+      content: r.content as string
+    }));
     
     // Detectar si el usuario quiere dar feedback/corrección al bot
     const isFeedback = userMessage.toLowerCase().includes('bot, no') || 
@@ -237,22 +224,18 @@ export async function POST(request: NextRequest) {
                        userMessage.toLowerCase().includes('no digas') ||
                        userMessage.toLowerCase().includes('no respondas');
     
-    if (isFeedback && lead.messages.length > 0) {
+    if (isFeedback && conversationHistory.length > 0) {
       // Guardar como feedback para aprendizaje
-      const lastBotMessage = lead.messages.filter(m => m.direction === 'outgoing').pop();
+      const lastIncoming = conversationHistory.filter(m => m.role === 'user').pop();
+      const lastOutgoing = conversationHistory.filter(m => m.role === 'assistant').pop();
       
-      await db.feedback.create({
-        data: {
-          triggerText: lead.messages.filter(m => m.direction === 'incoming').pop()?.content || '',
-          badResponse: lastBotMessage?.content,
-          correction: userMessage,
-          category: 'response_style',
-          isActive: true
-        }
+      await client.execute({
+        sql: 'INSERT INTO Feedback (id, triggerText, badResponse, correction, category, isActive) VALUES (?, ?, ?, ?, ?, ?)',
+        args: [generateId(), lastIncoming?.content || '', lastOutgoing?.content || null, userMessage, 'response_style', 1]
       });
       
       await sendTelegramMessage(
-        config.token,
+        token,
         chatId,
         '✅ *¡Gracias por tu feedback!* He aprendido de esta corrección y mejoraré mis respuestas futuras.'
       );
@@ -265,56 +248,44 @@ export async function POST(request: NextRequest) {
     
     // Actualizar lead si encontramos datos nuevos
     if (extractedData.phone || extractedData.name) {
-      await db.lead.update({
-        where: { id: lead.id },
-        data: {
-          phone: extractedData.phone || lead.phone,
-          firstName: extractedData.name || lead.firstName,
-          status: 'contacted'
-        }
+      await client.execute({
+        sql: 'UPDATE Lead SET phone = ?, firstName = ?, status = ?, updatedAt = CURRENT_TIMESTAMP WHERE id = ?',
+        args: [
+          extractedData.phone || existingPhone,
+          extractedData.name || existingFirstName,
+          'contacted',
+          leadId
+        ]
       });
       
-      if (!lead.phone && extractedData.phone) {
-        await updateStats('lead');
+      if (!existingPhone && extractedData.phone) {
         console.log(`[Telegram] Lead data captured: ${extractedData.name} - ${extractedData.phone}`);
       }
     }
     
     // Obtener feedback activo para aprendizaje
-    const activeFeedbacks = await db.feedback.findMany({
-      where: { isActive: true },
-      take: 10
-    });
-    
-    // Construir historial de conversación
-    const conversationHistory = lead.messages.map(m => ({
-      role: m.direction === 'incoming' ? 'user' : 'assistant',
-      content: m.content
+    const feedbacksResult = await client.execute("SELECT triggerText, correction FROM Feedback WHERE isActive = 1 LIMIT 10");
+    const activeFeedbacks = feedbacksResult.rows.map(r => ({
+      triggerText: r.triggerText as string,
+      correction: r.correction as string
     }));
     
     // Procesar con IA
     const aiResponse = await processWithAI(
       userMessage,
-      config.systemPrompt,
-      activeFeedbacks.map(f => ({ triggerText: f.triggerText, correction: f.correction })),
+      systemPrompt,
+      activeFeedbacks,
       conversationHistory
     );
     
     // Guardar mensaje saliente
-    await db.message.create({
-      data: {
-        leadId: lead.id,
-        direction: 'outgoing',
-        content: aiResponse,
-        messageType: 'text'
-      }
+    await client.execute({
+      sql: 'INSERT INTO Message (id, leadId, direction, content, messageType) VALUES (?, ?, ?, ?, ?)',
+      args: [generateId(), leadId, 'outgoing', aiResponse, 'text']
     });
     
-    // Actualizar estadísticas
-    await updateStats('out');
-    
     // Enviar respuesta a Telegram
-    await sendTelegramMessage(config.token, chatId, aiResponse);
+    await sendTelegramMessage(token, chatId, aiResponse);
     
     return NextResponse.json({ ok: true });
   } catch (error) {

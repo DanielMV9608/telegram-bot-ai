@@ -419,7 +419,7 @@ async function processWithGemini(
   systemPrompt: string,
   conversationHistory: Array<{ role: string; content: string }>,
   apiKey: string,
-  model: string = 'gemini-2.5-flash'
+  model: string = 'gemini-1.5-flash'
 ): Promise<string> {
   try {
     // Construir el contexto
@@ -431,11 +431,10 @@ async function processWithGemini(
       context += `${msg.role === 'user' ? 'Usuario' : 'Asistente'}: ${msg.content}\n`;
     }
     
-    // Gemini 2.5 y 3 usan una API diferente (v1beta o v1)
-    const apiVersion = model.startsWith('gemini-3') ? 'v1' : 'v1beta';
-    const url = `https://generativelanguage.googleapis.com/${apiVersion}/models/${model}:generateContent?key=${apiKey}`;
+    // Usar v1beta para todos los modelos de Gemini
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
     
-    console.log('[Gemini] Using model:', model, 'API version:', apiVersion);
+    console.log('[Gemini] Using model:', model);
     
     const response = await fetch(url, {
       method: 'POST',
@@ -457,15 +456,15 @@ async function processWithGemini(
     
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
-      console.error('[Gemini] API Error:', response.status, errorData);
-      throw new Error(`Gemini API error: ${response.status}`);
+      console.error('[Gemini] API Error:', response.status, JSON.stringify(errorData));
+      throw new Error(`Gemini API error: ${response.status} - ${JSON.stringify(errorData)}`);
     }
     
     const data = await response.json();
     const content = data.candidates?.[0]?.content?.parts?.[0]?.text;
     
     if (!content || content.trim().length === 0) {
-      console.error('[Gemini] Empty response:', data);
+      console.error('[Gemini] Empty response:', JSON.stringify(data));
       throw new Error('Empty response from Gemini');
     }
     
@@ -614,9 +613,22 @@ export async function POST(request: NextRequest) {
     
     const token = config.token as string;
     const systemPrompt = config.systemPrompt as string;
-    const aiProvider = (config.aiProvider as string) || 'gemini';
-    const aiApiKey = config.aiApiKey as string | null;
-    const aiModel = (config.aiModel as string) || 'gemini-2.5-flash';
+    let aiProvider = (config.aiProvider as string) || 'zai';
+    let aiApiKey = config.aiApiKey as string | null;
+    let aiModel = (config.aiModel as string) || 'gemini-1.5-flash';
+    
+    // Corregir modelos inválidos de Gemini
+    if (aiProvider === 'gemini' && aiModel.includes('2.5')) {
+      console.log('[Webhook] Invalid Gemini model, correcting to gemini-1.5-flash');
+      aiModel = 'gemini-1.5-flash';
+    }
+    
+    console.log('[Webhook] Config:', {
+      provider: aiProvider,
+      hasApiKey: !!aiApiKey,
+      model: aiModel,
+      isActive: !!config.isActive
+    });
     
     // Buscar o crear lead
     let leadId: string;

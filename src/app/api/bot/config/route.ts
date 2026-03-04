@@ -16,7 +16,7 @@ export async function GET() {
       // Crear configuración inicial
       await client.execute(`
         INSERT INTO BotConfig (id, systemPrompt, isActive, aiProvider, aiModel)
-        VALUES ('default', 'Eres un asistente de atención al cliente amable y profesional. Responde de forma concisa y útil.', 0, 'gemini', 'gemini-2.5-flash')
+        VALUES ('default', 'Eres un asistente de atención al cliente amable y profesional. Responde de forma concisa y útil.', 0, 'gemini', 'gemini-1.5-flash')
       `);
       
       const newResult = await client.execute('SELECT * FROM BotConfig LIMIT 1');

@@ -145,7 +145,7 @@ export default function Dashboard() {
   // AI Configuration
   const [aiProvider, setAiProvider] = useState('gemini');
   const [aiApiKey, setAiApiKey] = useState('');
-  const [aiModel, setAiModel] = useState('gemini-2.5-flash');
+  const [aiModel, setAiModel] = useState('gemini-1.5-flash');
   const [isSavingAI, setIsSavingAI] = useState(false);
   
   // Google Calendar Configuration
@@ -1262,17 +1262,9 @@ export default function Dashboard() {
                         )}
                         {aiProvider === 'gemini' && (
                           <>
-                            <optgroup label="Gemini 2.5 (Más recientes)">
-                              <option value="gemini-2.5-flash">Gemini 2.5 Flash (Recomendado)</option>
-                              <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
-                            </optgroup>
-                            <optgroup label="Gemini 3 (Experimental)">
-                              <option value="gemini-3.5-flash-preview-06-17">Gemini 3.5 Flash Preview</option>
-                            </optgroup>
-                            <optgroup label="Gemini 1.5 (Estable)">
-                              <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
-                              <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
-                            </optgroup>
+                            <option value="gemini-1.5-flash">Gemini 1.5 Flash (Recomendado)</option>
+                            <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+                            <option value="gemini-pro">Gemini Pro</option>
                           </>
                         )}
                         {aiProvider === 'zai' && (

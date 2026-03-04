@@ -22,15 +22,18 @@ export async function GET() {
     });
     
     // Probar conexión con consulta simple
-    const result = await client.execute('SELECT 1 as test');
+    await client.execute('SELECT 1 as test');
     
-    // Verificar tabla BotConfig
-    let tables = [];
+    // Verificar tabla BotConfig directamente
+    let botConfigExists = false;
+    let botConfigData = null;
     try {
-      const tablesResult = await client.execute('SELECT name FROM sqlite_master');
-      tables = tablesResult.rows.map(r => r.name);
+      const configResult = await client.execute('SELECT * FROM BotConfig LIMIT 1');
+      botConfigExists = true;
+      botConfigData = configResult.rows;
     } catch (e) {
-      tables = ['Could not list tables'];
+      botConfigExists = false;
+      botConfigData = String(e);
     }
     
     console.log('[Test DB] Connection successful');
@@ -38,7 +41,8 @@ export async function GET() {
     return NextResponse.json({
       success: true,
       message: 'Conexión exitosa a Turso',
-      tables: result.rows.map(r => r.name),
+      botConfigExists,
+      botConfigData,
       databaseUrl: process.env.DATABASE_URL?.substring(0, 30) + '...'
     });
   } catch (error) {

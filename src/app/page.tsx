@@ -967,6 +967,101 @@ export default function Dashboard() {
                 <Card className="border-0 shadow-md">
                   <CardHeader>
                     <CardTitle className="flex items-center gap-2">
+                      <Brain className="w-5 h-5 text-purple-500" />
+                      Configuración de IA
+                    </CardTitle>
+                    <CardDescription>Selecciona qué API de IA usará el bot</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                      <Label>Proveedor de IA</Label>
+                      <select
+                        className="w-full p-2 border rounded-lg bg-background"
+                        value={aiProvider}
+                        onChange={(e) => setAiProvider(e.target.value)}
+                      >
+                        <option value="zai">🤖 z-ai (Interno - Gratis)</option>
+                        <option value="openai">🟢 OpenAI (GPT-4)</option>
+                        <option value="gemini">🔵 Google Gemini</option>
+                      </select>
+                    </div>
+                    
+                    {aiProvider !== 'zai' && (
+                      <div className="space-y-2">
+                        <Label>API Key</Label>
+                        <Input
+                          type="password"
+                          placeholder="sk-..."
+                          value={aiApiKey}
+                          onChange={(e) => setAiApiKey(e.target.value)}
+                        />
+                        <p className="text-xs text-slate-500">
+                          {aiProvider === 'openai' && 'Obtén tu API Key en platform.openai.com'}
+                          {aiProvider === 'gemini' && 'Obtén tu API Key en aistudio.google.com'}
+                        </p>
+                      </div>
+                    )}
+                    
+                    <div className="space-y-2">
+                      <Label>Modelo</Label>
+                      <select
+                        className="w-full p-2 border rounded-lg bg-background"
+                        value={aiModel}
+                        onChange={(e) => setAiModel(e.target.value)}
+                      >
+                        {aiProvider === 'openai' && (
+                          <>
+                            <option value="gpt-4o-mini">GPT-4o Mini (Recomendado)</option>
+                            <option value="gpt-4o">GPT-4o</option>
+                            <option value="gpt-4-turbo">GPT-4 Turbo</option>
+                          </>
+                        )}
+                        {aiProvider === 'gemini' && (
+                          <>
+                            <option value="gemini-1.5-flash">Gemini 1.5 Flash (Recomendado)</option>
+                            <option value="gemini-1.5-pro">Gemini 1.5 Pro</option>
+                            <option value="gemini-pro">Gemini Pro</option>
+                          </>
+                        )}
+                        {aiProvider === 'zai' && (
+                          <option value="default">Modelo interno optimizado</option>
+                        )}
+                      </select>
+                    </div>
+                    
+                    <Button 
+                      onClick={async () => {
+                        setIsSavingAI(true);
+                        try {
+                          const res = await fetch('/api/bot/config', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ aiProvider, aiApiKey, aiModel })
+                          });
+                          const data = await res.json();
+                          if (data.success) {
+                            toast({ title: '✅ Guardado', description: 'Configuración de IA actualizada' });
+                          } else {
+                            throw new Error(data.error);
+                          }
+                        } catch (error) {
+                          toast({ title: 'Error', description: 'No se pudo guardar', variant: 'destructive' });
+                        } finally {
+                          setIsSavingAI(false);
+                        }
+                      }}
+                      disabled={isSavingAI}
+                      className="w-full"
+                    >
+                      {isSavingAI ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Brain className="w-4 h-4 mr-2" />}
+                      Guardar Configuración IA
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-0 shadow-md lg:col-span-2">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
                       <Sparkles className="w-5 h-5 text-purple-500" />
                       Personalidad del Bot
                     </CardTitle>
@@ -976,12 +1071,12 @@ export default function Dashboard() {
                       <Label>System Prompt</Label>
                       <Textarea
                         placeholder="Eres un asistente amable..."
-                        className="min-h-48"
+                        className="min-h-32"
                         value={systemPrompt}
                         onChange={(e) => setSystemPrompt(e.target.value)}
                       />
                     </div>
-                    <Button onClick={handleUpdatePrompt} className="w-full">Guardar Prompt</Button>
+                    <Button onClick={handleUpdatePrompt}>Guardar Prompt</Button>
                   </CardContent>
                 </Card>
               </div>

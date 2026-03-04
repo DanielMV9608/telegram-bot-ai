@@ -64,10 +64,32 @@ export async function GET() {
   }
 }
 
-// POST - Crear columnas faltantes
+// POST - Crear columnas faltantes o actualizar modelo
 export async function POST() {
   try {
     const client = getClient();
+    
+    // Primero, corregir el modelo si es inválido
+    const configResult = await client.execute('SELECT id, aiModel FROM BotConfig LIMIT 1');
+    const config = configResult.rows[0] as Record<string, unknown> | undefined;
+    
+    if (config) {
+      const currentModel = config.aiModel as string;
+      const invalidModels = [
+        'gemini-2.5-flash-preview-05-20',
+        'gemini-2.5-pro-preview-05-06',
+        'gemini-2.5-flash',
+        'gemini-2.5-pro'
+      ];
+      
+      if (!currentModel || invalidModels.includes(currentModel)) {
+        console.log('[Migration] Fixing invalid model:', currentModel, '-> gemini-2.0-flash');
+        await client.execute({
+          sql: "UPDATE BotConfig SET aiModel = 'gemini-2.0-flash' WHERE id = ?",
+          args: [config.id as string]
+        });
+      }
+    }
     
     // Verificar qué columnas faltan
     const tableInfo = await client.execute("PRAGMA table_info(BotConfig)");
@@ -82,7 +104,7 @@ export async function POST() {
       columnsToAdd.push('ADD COLUMN aiApiKey TEXT');
     }
     if (!existingColumns.includes('aiModel')) {
-      columnsToAdd.push("ADD COLUMN aiModel TEXT DEFAULT 'gemini-2.5-flash-preview-05-20'");
+      columnsToAdd.push("ADD COLUMN aiModel TEXT DEFAULT 'gemini-2.0-flash'");
     }
     if (!existingColumns.includes('googleClientId')) {
       columnsToAdd.push('ADD COLUMN googleClientId TEXT');
@@ -103,14 +125,6 @@ export async function POST() {
       columnsToAdd.push('ADD COLUMN emailFrom TEXT');
     }
     
-    if (columnsToAdd.length === 0) {
-      return NextResponse.json({
-        success: true,
-        message: 'Todas las columnas ya existen',
-        columnsAdded: []
-      });
-    }
-    
     // SQLite no soporta múltiples ADD COLUMN en una sentencia
     // Necesitamos ejecutar una por una
     for (const columnDef of columnsToAdd) {
@@ -126,11 +140,21 @@ export async function POST() {
     const newTableInfo = await client.execute("PRAGMA table_info(BotConfig)");
     const newColumns = newTableInfo.rows.map(r => r.name);
     
+    // Obtener config actualizada
+    const updatedConfigResult = await client.execute('SELECT id, aiProvider, aiModel FROM BotConfig LIMIT 1');
+    const updatedConfig = updatedConfigResult.rows[0] as Record<string, unknown> | undefined;
+    
     return NextResponse.json({
       success: true,
       message: 'Migración completada',
       columnsAdded: columnsToAdd,
-      currentColumns: newColumns
+      currentColumns: newColumns,
+      modelFixed: config ? true : false,
+      updatedConfig: updatedConfig ? {
+        id: updatedConfig.id,
+        aiProvider: updatedConfig.aiProvider,
+        aiModel: updatedConfig.aiModel
+      } : null
     });
   } catch (error) {
     console.error('Migration error:', error);

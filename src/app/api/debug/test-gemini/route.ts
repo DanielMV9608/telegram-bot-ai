@@ -27,7 +27,7 @@ export async function POST(request: NextRequest) {
     
     const aiProvider = (config.aiProvider as string) || 'gemini';
     const aiApiKey = config.aiApiKey as string | null;
-    const aiModel = (config.aiModel as string) || 'gemini-2.5-flash-preview-05-20';
+    const aiModel = (config.aiModel as string) || 'gemini-2.0-flash';
     
     // 2. Verificar API Key
     if (!aiApiKey) {

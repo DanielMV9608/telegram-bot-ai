@@ -419,7 +419,7 @@ async function processWithGemini(
   systemPrompt: string,
   conversationHistory: Array<{ role: string; content: string }>,
   apiKey: string,
-  model: string = 'gemini-2.5-flash-preview-05-20'
+  model: string = 'gemini-2.0-flash'
 ): Promise<string> {
   try {
     // Construir historial de conversación
@@ -630,7 +630,7 @@ export async function POST(request: NextRequest) {
     const systemPrompt = config.systemPrompt as string;
     const aiProvider = (config.aiProvider as string) || 'gemini';
     const aiApiKey = config.aiApiKey as string | null;
-    const aiModel = (config.aiModel as string) || 'gemini-2.5-flash-preview-05-20';
+    const aiModel = (config.aiModel as string) || 'gemini-2.0-flash';
     
     console.log('[Webhook] Config:', {
       provider: aiProvider,

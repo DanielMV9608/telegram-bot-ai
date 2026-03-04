@@ -157,9 +157,10 @@ export default function Dashboard() {
   // Selected lead for details
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
 
-  // Fetch all data
-  const fetchData = async (retryCount = 0) => {
-    if (retryCount === 0) setLoading(true);
+  // Fetch all data - silent=true para actualizaciones en segundo plano
+  const fetchData = async (silent = false, retryCount = 0) => {
+    // Solo mostrar loading en la primera carga o cuando el usuario lo solicita
+    if (!silent && retryCount === 0) setLoading(true);
     try {
       const [statusRes, leadsRes, feedbackRes, configRes, knowledgeRes] = await Promise.all([
         fetch('/api/bot/status', { cache: 'no-store' }),
@@ -191,18 +192,21 @@ export default function Dashboard() {
       // Reintentar hasta 2 veces
       if (retryCount < 2) {
         console.log(`Reintentando... (${retryCount + 1}/2)`);
-        setTimeout(() => fetchData(retryCount + 1), 1000);
+        setTimeout(() => fetchData(silent, retryCount + 1), 1000);
         return;
       }
-      toast({ title: 'Error de conexión', description: 'No se pudieron cargar los datos. Verifica tu conexión.', variant: 'destructive' });
+      // Solo mostrar toast de error si no es silencioso
+      if (!silent) {
+        toast({ title: 'Error de conexión', description: 'No se pudieron cargar los datos. Verifica tu conexión.', variant: 'destructive' });
+      }
     } finally {
-      if (retryCount === 0 || retryCount >= 2) setLoading(false);
+      if (!silent && (retryCount === 0 || retryCount >= 2)) setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 30000);
+    fetchData(); // Primera carga con loading
+    const interval = setInterval(() => fetchData(true), 30000); // Actualizaciones silenciosas
     return () => clearInterval(interval);
   }, []);
 

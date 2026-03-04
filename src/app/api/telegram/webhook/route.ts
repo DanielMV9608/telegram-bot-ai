@@ -472,6 +472,19 @@ async function processWithGemini(
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       console.error('[Gemini] API Error:', response.status, JSON.stringify(errorData));
+      
+      // Mensajes de error más específicos
+      const errorMessage = errorData?.error?.message || '';
+      if (errorMessage.includes('location is not supported')) {
+        throw new Error('API_KEY_REGION_BLOCKED: Tu API key tiene restricciones de ubicación. Crea una nueva API key en Google AI Studio sin restricciones.');
+      }
+      if (response.status === 404) {
+        throw new Error(`Modelo no encontrado. El modelo '${model}' no existe o no está disponible.`);
+      }
+      if (response.status === 403) {
+        throw new Error('API_KEY_INVALID: Tu API key no es válida o expiró.');
+      }
+      
       throw new Error(`Gemini API error: ${response.status} - ${JSON.stringify(errorData)}`);
     }
     
@@ -934,8 +947,14 @@ export async function POST(request: NextRequest) {
         }
       } else {
         // Proporcionar un mensaje más útil basado en el tipo de error
-        if (errorMessage.includes('API Key')) {
+        if (errorMessage.includes('API_KEY_REGION_BLOCKED')) {
+          aiResponse = '⚠️ Tu API key de Gemini tiene restricciones de ubicación. Ve a Google AI Studio y crea una nueva API key sin restricciones de región.';
+        } else if (errorMessage.includes('API_KEY_INVALID')) {
+          aiResponse = '⚠️ Tu API key no es válida. Verifica que esté correcta en la configuración.';
+        } else if (errorMessage.includes('API Key')) {
           aiResponse = '⚠️ El bot necesita configuración. Por favor contacta al administrador para configurar la API Key.';
+        } else if (errorMessage.includes('Modelo no encontrado')) {
+          aiResponse = '⚠️ El modelo de IA seleccionado no está disponible. Selecciona otro modelo en la configuración.';
         } else if (errorMessage.includes('Empty response')) {
           aiResponse = 'Lo siento, no pude generar una respuesta. ¿Podrías reformular tu pregunta?';
         } else {

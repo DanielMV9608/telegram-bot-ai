@@ -22,7 +22,7 @@ export async function GET() {
     });
     
     // Probar conexión
-    const result = await client.execute('SELECT name FROM sqlite_master WHERE type="table"');
+    const result = await client.execute("SELECT name FROM sqlite_master WHERE type='table'");
     
     console.log('[Test DB] Tables found:', result.rows.length);
     

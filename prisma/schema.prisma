@@ -12,14 +12,30 @@ datasource db {
 
 // Configuración del Bot de Telegram
 model BotConfig {
-  id           String   @id @default(cuid())
-  token        String?  // Token del bot de Telegram
-  botUsername  String?  // Username del bot
-  systemPrompt String   @default("Eres un asistente de atención al cliente amable y profesional. Tu objetivo es ayudar a los clientes y capturar sus datos (nombre y número de teléfono) cuando muestren interés en los servicios. Sé cordial, útil y nunca presiones demasiado. Si el cliente te da su nombre y teléfono, agradécele y confírmale que te pondrás en contacto pronto.")
-  isActive     Boolean  @default(false)
-  webhookUrl   String?  // URL del webhook configurado
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id                  String   @id @default(cuid())
+  token               String?  // Token del bot de Telegram
+  botUsername         String?  // Username del bot
+  systemPrompt        String   @default("Eres un asistente de atención al cliente amable y profesional. Tu objetivo es ayudar a los clientes y capturar sus datos (nombre y número de teléfono) cuando muestren interés en los servicios. Sé cordial, útil y nunca presiones demasiado. Si el cliente te da su nombre y teléfono, agradécele y confírmale que te pondrás en contacto pronto.")
+  isActive            Boolean  @default(false)
+  webhookUrl          String?  // URL del webhook configurado
+  aiProvider          String?  @default("gemini")
+  aiApiKey            String?  // API Key para OpenAI o Gemini
+  aiModel             String?  @default("gemini-2.5-flash")
+  // Google Calendar
+  googleClientId      String?
+  googleClientSecret  String?
+  googleRefreshToken  String?
+  googleCalendarId    String?  // ID del calendario (por defecto 'primary')
+  // Email
+  emailProvider       String?  @default("resend")
+  resendApiKey        String?
+  smtpHost            String?
+  smtpPort            Int?
+  smtpUser            String?
+  smtpPassword        String?
+  emailFrom           String?  // Email remitente
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 }
 
 // Leads capturados por el bot
@@ -70,6 +86,24 @@ model BotStats {
   messagesOut     Int      @default(0)
   leadsCaptured   Int      @default(0)
   uniqueUsers     Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+// Reservas en Google Calendar
+model Reservation {
+  id              String   @id @default(cuid())
+  leadId          String
+  leadName        String
+  leadEmail       String?
+  leadPhone       String?
+  dateTime        DateTime
+  endTime         DateTime
+  title           String?
+  description     String?
+  googleEventId   String?  // ID del evento en Google Calendar
+  googleEventLink String?  // Link al evento
+  status          String   @default("confirmed") // confirmed, cancelled, completed
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }

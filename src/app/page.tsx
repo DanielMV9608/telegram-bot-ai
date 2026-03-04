@@ -56,6 +56,7 @@ import {
   FileText,
   Link,
   Loader2,
+  Calendar,
 } from 'lucide-react';
 
 // Types
@@ -147,6 +148,17 @@ export default function Dashboard() {
   const [aiModel, setAiModel] = useState('gemini-2.5-flash');
   const [isSavingAI, setIsSavingAI] = useState(false);
   
+  // Google Calendar Configuration
+  const [googleClientId, setGoogleClientId] = useState('');
+  const [googleClientSecret, setGoogleClientSecret] = useState('');
+  const [googleCalendarId, setGoogleCalendarId] = useState('primary');
+  const [isSavingGoogle, setIsSavingGoogle] = useState(false);
+  
+  // Email Configuration
+  const [emailFrom, setEmailFrom] = useState('');
+  const [resendApiKey, setResendApiKey] = useState('');
+  const [isSavingEmail, setIsSavingEmail] = useState(false);
+  
   // Feedback form
   const [newFeedback, setNewFeedback] = useState({ triggerText: '', correction: '', category: 'response_style' });
   
@@ -185,6 +197,13 @@ export default function Dashboard() {
         // Cargar configuración de IA guardada
         if (configData.config.aiProvider) setAiProvider(configData.config.aiProvider);
         if (configData.config.aiModel) setAiModel(configData.config.aiModel);
+        // Cargar configuración de Google Calendar
+        if (configData.config.googleClientId) setGoogleClientId(configData.config.googleClientId);
+        if (configData.config.googleClientSecret) setGoogleClientSecret(configData.config.googleClientSecret);
+        if (configData.config.googleCalendarId) setGoogleCalendarId(configData.config.googleCalendarId);
+        // Cargar configuración de Email
+        if (configData.config.emailFrom) setEmailFrom(configData.config.emailFrom);
+        if (configData.config.resendApiKey) setResendApiKey('••••••••'); // Ocultar
       }
       if (knowledgeData.success) setKnowledge(knowledgeData.knowledge);
     } catch (error) {
@@ -520,7 +539,7 @@ export default function Dashboard() {
           </div>
         ) : (
           <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-            <TabsList className="grid w-full grid-cols-5 lg:w-auto lg:grid-cols-5">
+            <TabsList className="grid w-full grid-cols-6 lg:w-auto lg:grid-cols-6">
               <TabsTrigger value="dashboard" className="flex items-center gap-2">
                 <Target className="w-4 h-4" />
                 <span className="hidden sm:inline">Dashboard</span>
@@ -532,6 +551,10 @@ export default function Dashboard() {
               <TabsTrigger value="knowledge" className="flex items-center gap-2">
                 <Database className="w-4 h-4" />
                 <span className="hidden sm:inline">Conocimiento</span>
+              </TabsTrigger>
+              <TabsTrigger value="integrations" className="flex items-center gap-2">
+                <Zap className="w-4 h-4" />
+                <span className="hidden sm:inline">Integraciones</span>
               </TabsTrigger>
               <TabsTrigger value="config" className="flex items-center gap-2">
                 <Settings className="w-4 h-4" />
@@ -926,6 +949,196 @@ export default function Dashboard() {
                       <Brain className="w-8 h-8 text-purple-500 mb-2" />
                       <h4 className="font-medium">3. El bot aprende</h4>
                       <p className="text-sm text-slate-500">La IA usa esta información para responder preguntas de clientes</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </TabsContent>
+
+            {/* Integrations Tab */}
+            <TabsContent value="integrations" className="space-y-6">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Google Calendar */}
+                <Card className="border-0 shadow-md">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Calendar className="w-5 h-5 text-blue-500" />
+                      Google Calendar
+                    </CardTitle>
+                    <CardDescription>Conecta Google Calendar para gestionar reservas</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-200 dark:border-blue-800">
+                      <p className="text-xs text-blue-700 dark:text-blue-300">
+                        <strong>Cómo configurar:</strong><br/>
+                        1. Ve a <a href="https://console.cloud.google.com" target="_blank" className="underline">Google Cloud Console</a><br/>
+                        2. Crea un proyecto y habilita Google Calendar API<br/>
+                        3. Crea credenciales OAuth 2.0 (Desktop app)<br/>
+                        4. Copia el Client ID y Client Secret aquí
+                      </p>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label>Client ID</Label>
+                      <Input
+                        placeholder="123456789-abc...apps.googleusercontent.com"
+                        value={googleClientId}
+                        onChange={(e) => setGoogleClientId(e.target.value)}
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label>Client Secret</Label>
+                      <Input
+                        type="password"
+                        placeholder="GOCSPX-..."
+                        value={googleClientSecret}
+                        onChange={(e) => setGoogleClientSecret(e.target.value)}
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label>Calendar ID</Label>
+                      <Input
+                        placeholder="primary o tu-email@gmail.com"
+                        value={googleCalendarId}
+                        onChange={(e) => setGoogleCalendarId(e.target.value)}
+                      />
+                      <p className="text-xs text-slate-500">Usa "primary" para tu calendario principal</p>
+                    </div>
+                    
+                    <Button 
+                      onClick={async () => {
+                        setIsSavingGoogle(true);
+                        try {
+                          const res = await fetch('/api/calendar/auth', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ 
+                              clientId: googleClientId, 
+                              clientSecret: googleClientSecret,
+                              calendarId: googleCalendarId
+                            })
+                          });
+                          const data = await res.json();
+                          if (data.success) {
+                            toast({ title: '✅ Guardado', description: 'Configuración de Google Calendar guardada. Ahora autoriza el acceso.' });
+                          } else {
+                            throw new Error(data.error);
+                          }
+                        } catch (error) {
+                          toast({ title: 'Error', description: 'No se pudo guardar', variant: 'destructive' });
+                        } finally {
+                          setIsSavingGoogle(false);
+                        }
+                      }}
+                      disabled={isSavingGoogle}
+                      className="w-full"
+                    >
+                      {isSavingGoogle ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Calendar className="w-4 h-4 mr-2" />}
+                      Guardar Configuración
+                    </Button>
+                  </CardContent>
+                </Card>
+
+                {/* Email (Resend) */}
+                <Card className="border-0 shadow-md">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Mail className="w-5 h-5 text-purple-500" />
+                      Email de Confirmación
+                    </CardTitle>
+                    <CardDescription>Envía emails automáticos de confirmación</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="p-3 bg-purple-50 dark:bg-purple-950/30 rounded-lg border border-purple-200 dark:border-purple-800">
+                      <p className="text-xs text-purple-700 dark:text-purple-300">
+                        <strong>Configura con Resend:</strong><br/>
+                        1. Ve a <a href="https://resend.com" target="_blank" className="underline">resend.com</a> y crea una cuenta gratis<br/>
+                        2. Verifica tu dominio o usa el dominio de prueba<br/>
+                        3. Genera una API Key y pégala aquí
+                      </p>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label>Email Remitente</Label>
+                      <Input
+                        type="email"
+                        placeholder="noreply@tudominio.com"
+                        value={emailFrom}
+                        onChange={(e) => setEmailFrom(e.target.value)}
+                      />
+                      <p className="text-xs text-slate-500">El email desde el que se enviarán las confirmaciones</p>
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label>Resend API Key</Label>
+                      <Input
+                        type="password"
+                        placeholder="re_..."
+                        value={resendApiKey}
+                        onChange={(e) => setResendApiKey(e.target.value)}
+                      />
+                    </div>
+                    
+                    <Button 
+                      onClick={async () => {
+                        setIsSavingEmail(true);
+                        try {
+                          const res = await fetch('/api/bot/config', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ 
+                              emailFrom,
+                              resendApiKey: resendApiKey === '••••••••' ? undefined : resendApiKey
+                            })
+                          });
+                          const data = await res.json();
+                          if (data.success) {
+                            toast({ title: '✅ Guardado', description: 'Configuración de email guardada' });
+                          } else {
+                            throw new Error(data.error);
+                          }
+                        } catch (error) {
+                          toast({ title: 'Error', description: 'No se pudo guardar', variant: 'destructive' });
+                        } finally {
+                          setIsSavingEmail(false);
+                        }
+                      }}
+                      disabled={isSavingEmail}
+                      className="w-full"
+                    >
+                      {isSavingEmail ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Mail className="w-4 h-4 mr-2" />}
+                      Guardar Configuración
+                    </Button>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* How it works */}
+              <Card className="border-0 shadow-md">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Info className="w-5 h-5 text-amber-500" />
+                    ¿Cómo funcionan las reservas?
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="p-4 rounded-lg bg-slate-50 dark:bg-slate-800/50">
+                      <MessageSquare className="w-8 h-8 text-blue-500 mb-2" />
+                      <h4 className="font-medium">1. El cliente reserva</h4>
+                      <p className="text-sm text-slate-500">El cliente escribe "Quiero reservar para mañana a las 3pm"</p>
+                    </div>
+                    <div className="p-4 rounded-lg bg-slate-50 dark:bg-slate-800/50">
+                      <Calendar className="w-8 h-8 text-emerald-500 mb-2" />
+                      <h4 className="font-medium">2. Se crea el evento</h4>
+                      <p className="text-sm text-slate-500">Automáticamente se agrega a tu Google Calendar</p>
+                    </div>
+                    <div className="p-4 rounded-lg bg-slate-50 dark:bg-slate-800/50">
+                      <Mail className="w-8 h-8 text-purple-500 mb-2" />
+                      <h4 className="font-medium">3. Email de confirmación</h4>
+                      <p className="text-sm text-slate-500">Si el cliente dio su email, recibe confirmación automática</p>
                     </div>
                   </div>
                 </CardContent>

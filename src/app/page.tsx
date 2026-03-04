@@ -158,15 +158,15 @@ export default function Dashboard() {
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
 
   // Fetch all data
-  const fetchData = async () => {
-    setLoading(true);
+  const fetchData = async (retryCount = 0) => {
+    if (retryCount === 0) setLoading(true);
     try {
       const [statusRes, leadsRes, feedbackRes, configRes, knowledgeRes] = await Promise.all([
-        fetch('/api/bot/status'),
-        fetch('/api/leads'),
-        fetch('/api/feedback'),
-        fetch('/api/bot/config'),
-        fetch('/api/knowledge'),
+        fetch('/api/bot/status', { cache: 'no-store' }),
+        fetch('/api/leads', { cache: 'no-store' }),
+        fetch('/api/feedback', { cache: 'no-store' }),
+        fetch('/api/bot/config', { cache: 'no-store' }),
+        fetch('/api/knowledge', { cache: 'no-store' }),
       ]);
       
       const statusData = await statusRes.json();
@@ -181,13 +181,22 @@ export default function Dashboard() {
       if (configData.success) {
         setConfig(configData.config);
         setSystemPrompt(configData.config.systemPrompt || '');
+        // Cargar configuración de IA guardada
+        if (configData.config.aiProvider) setAiProvider(configData.config.aiProvider);
+        if (configData.config.aiModel) setAiModel(configData.config.aiModel);
       }
       if (knowledgeData.success) setKnowledge(knowledgeData.knowledge);
     } catch (error) {
       console.error('Error fetching data:', error);
-      toast({ title: 'Error', description: 'No se pudieron cargar los datos', variant: 'destructive' });
+      // Reintentar hasta 2 veces
+      if (retryCount < 2) {
+        console.log(`Reintentando... (${retryCount + 1}/2)`);
+        setTimeout(() => fetchData(retryCount + 1), 1000);
+        return;
+      }
+      toast({ title: 'Error de conexión', description: 'No se pudieron cargar los datos. Verifica tu conexión.', variant: 'destructive' });
     } finally {
-      setLoading(false);
+      if (retryCount === 0 || retryCount >= 2) setLoading(false);
     }
   };
 

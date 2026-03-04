@@ -628,9 +628,33 @@ export async function POST(request: NextRequest) {
     
     const token = config.token as string;
     const systemPrompt = config.systemPrompt as string;
-    const aiProvider = (config.aiProvider as string) || 'gemini';
+    let aiProvider = (config.aiProvider as string) || 'gemini';
     const aiApiKey = config.aiApiKey as string | null;
-    const aiModel = (config.aiModel as string) || 'gemini-2.0-flash';
+    let aiModel = (config.aiModel as string) || 'gemini-2.0-flash';
+    
+    // Corregir modelos inválidos automáticamente
+    const invalidModels = [
+      'gemini-2.5-flash-preview-05-20',
+      'gemini-2.5-pro-preview-05-06',
+      'gemini-2.5-flash',
+      'gemini-2.5-pro',
+      'gemini-pro' // también cambió
+    ];
+    
+    if (invalidModels.includes(aiModel)) {
+      console.log('[Webhook] Auto-fixing invalid model:', aiModel, '-> gemini-2.0-flash');
+      aiModel = 'gemini-2.0-flash';
+      // Actualizar en la BD
+      try {
+        await client.execute({
+          sql: "UPDATE BotConfig SET aiModel = 'gemini-2.0-flash' WHERE id = ?",
+          args: [config.id as string]
+        });
+        console.log('[Webhook] Model fixed in database');
+      } catch (e) {
+        console.log('[Webhook] Could not update model in DB:', e);
+      }
+    }
     
     console.log('[Webhook] Config:', {
       provider: aiProvider,
